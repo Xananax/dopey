@@ -24,7 +24,7 @@ COLUMNS_ID = dict((name, i) for i, name in enumerate(COLUMNS_NAME))
 class AnimationTool (gtk.VBox):
 
     stock_id = 'mypaint-tool-animation'
-    
+
     tool_widget_title = _("Animation")
 
     tool_widget_icon_name = "mypaint-tool-animation"
@@ -32,7 +32,7 @@ class AnimationTool (gtk.VBox):
     tool_widget_description = _("Create cel-based animation")
 
     __gtype_name__ = 'MyPaintAnimationTool'
-    
+
     def __init__(self):
         gtk.VBox.__init__(self)
         from application import get_app
@@ -43,10 +43,10 @@ class AnimationTool (gtk.VBox):
 
         self.set_size_request(200, 150)
         self.app.doc.model.doc_observers.append(self.doc_structure_modified_cb)
-        
+
         # create list:
         self.listmodel = self.create_list()
-        
+
         # create tree view:
         self.treeview = gtk.TreeView(self.listmodel)
         self.treeview.set_rules_hint(True)
@@ -54,16 +54,16 @@ class AnimationTool (gtk.VBox):
         treesel = self.treeview.get_selection()
         treesel.set_mode(gtk.SELECTION_SINGLE)
         self.changed_handler = treesel.connect('changed', self.on_row_changed)
-        
+
         self.add_columns()
-        
+
         layers_scroll = gtk.ScrolledWindow()
         layers_scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         layers_scroll.set_placement(gtk.CORNER_TOP_RIGHT)
         layers_scroll.add(self.treeview)
 
         # xsheet controls:
-        
+
         def pixbuf_button(pixbuf):
             b = gtk.Button()
             img = gtk.Image()
@@ -75,7 +75,7 @@ class AnimationTool (gtk.VBox):
         self.key_button = pixbuf_button(pixbuf_key)
         self.key_button.connect('clicked', self.on_toggle_key)
         self.key_button.set_tooltip_text(_('Toggle Keyframe'))
-        
+
         pixbuf_skip = self.app.pixmaps.cel_skip
         self.skip_button = pixbuf_button(pixbuf_skip)
         self.skip_button.connect('clicked', self.on_toggle_skip)
@@ -84,17 +84,17 @@ class AnimationTool (gtk.VBox):
         self.chdesc_button = stock_button(gtk.STOCK_ITALIC)
         self.chdesc_button.connect('clicked', self.on_change_description)
         self.chdesc_button.set_tooltip_text(_('Change Cel Description'))
-        
+
         pixbuf_add = self.app.pixmaps.cel_add
         self.add_cel_button = pixbuf_button(pixbuf_add)
         self.add_cel_button.connect('clicked', self.on_add_cel)
         self.add_cel_button.set_tooltip_text(_('Add cel to this frame'))
-        
+
         pixbuf_remove = self.app.pixmaps.cel_remove
         self.remove_cel_button = pixbuf_button(pixbuf_remove)
         self.remove_cel_button.connect('clicked', self.on_remove_cel)
         self.remove_cel_button.set_tooltip_text(_('Remove cel of this frame'))
-        
+
         buttons_hbox = gtk.HBox()
         buttons_hbox.pack_start(self.key_button)
         buttons_hbox.pack_start(self.skip_button)
@@ -103,19 +103,19 @@ class AnimationTool (gtk.VBox):
         buttons_hbox.pack_start(self.remove_cel_button)
 
         # player controls:
-        
+
         self.previous_button = stock_button(gtk.STOCK_GO_UP)
         self.previous_button.connect('clicked', self.on_previous_frame)
         self.previous_button.set_tooltip_text(_('Previous Frame'))
-        
+
         self.next_button = stock_button(gtk.STOCK_GO_DOWN)
         self.next_button.connect('clicked', self.on_next_frame)
         self.next_button.set_tooltip_text(_('Next Frame'))
-        
+
         self.play_button = stock_button(gtk.STOCK_MEDIA_PLAY)
         self.play_button.connect('clicked', self.on_animation_play)
         self.play_button.set_tooltip_text(_('Play animation'))
-        
+
         self.pause_button = stock_button(gtk.STOCK_MEDIA_PAUSE)
         self.pause_button.connect('clicked', self.on_animation_pause)
         self.pause_button.set_tooltip_text(_('Pause animation'))
@@ -132,7 +132,7 @@ class AnimationTool (gtk.VBox):
         anibuttons_hbox.pack_start(self.stop_button)
 
         # frames edit controls:
-        
+
         insert_frame_button = stock_button(gtk.STOCK_ADD)
         insert_frame_button.connect('clicked', self.on_insert_frames)
         insert_frame_button.set_tooltip_text(_('Insert frames'))
@@ -326,7 +326,7 @@ class AnimationTool (gtk.VBox):
         for i, frame in xsheet_list:
             listmodel.append((i, frame))
         return listmodel
-    
+
     def add_columns(self):
         listmodel = self.treeview.get_model()
         font = pango.FontDescription('normal 8')
@@ -362,7 +362,7 @@ class AnimationTool (gtk.VBox):
         self.treeview.append_column(framenumber_col)
         self.treeview.append_column(icon_col)
         self.treeview.append_column(description_col)
-        
+
     def _change_player_buttons(self):
         if self.is_playing:
             self.play_button.hide()
@@ -378,7 +378,7 @@ class AnimationTool (gtk.VBox):
         self.cut_button.set_sensitive(self.ani.can_cutcopy())
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
-        
+
         f = self.ani.frames.get_selected()
         if f.cel is None:
             self.add_cel_button.show()
@@ -389,42 +389,41 @@ class AnimationTool (gtk.VBox):
 
     def doc_structure_modified_cb(self, *args):
         self.framerate_adjustment.set_value(self.ani.framerate)
-    
+
     def on_row_changed(self, treesel):
         model, it = treesel.get_selected()
-        path = model.get_path(it)
-        frame_idx = path[COLUMNS_ID['frame_index']]
+        frame_idx = model.get_value(it, COLUMNS_ID['frame_index'])
         self.ani.select_frame(frame_idx)
         self._update_buttons_sensitive()
-        
+
     def on_toggle_key(self, button):
         self.ani.toggle_key()
 
     def on_toggle_skip(self, button):
         self.ani.toggle_skip_visible()
-    
+
     def on_previous_frame(self, button):
         self.ani.previous_frame()
-    
+
     def on_next_frame(self, button):
         self.ani.next_frame()
-    
+
     def on_change_description(self, button):
         treesel = self.treeview.get_selection()
         model, it = treesel.get_selected()
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
-        
+
         description = anidialogs.ask_for(self, _("Change description"),
             _("Description"), frame.description)
         if description:
             self.ani.change_description(description)
-    
+
     def on_add_cel(self, button):
         self.ani.add_cel()
-    
+
     def on_remove_cel(self, button):
         self.ani.remove_cel()
-    
+
     def _get_row_class(self, model, it):
         """Return 0 if even row, 1 if odd row."""
         path = model.get_path(it)[0]
@@ -433,11 +432,11 @@ class AnimationTool (gtk.VBox):
     def set_number(self, column, cell, model, it, data):
         idx = model.get_value(it, COLUMNS_ID['frame_index'])
         cell.set_property('text', str(idx+1))
-        
+
     def set_description(self, column, cell, model, it, data):
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
         cell.set_property('text', frame.description)
-        
+
     def set_icon(self, column, cell, model, it, data):
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
         pixname = 'frame'
@@ -516,7 +515,7 @@ class AnimationTool (gtk.VBox):
         # TODO, this is a quick fix, better is to update only the rows
         # height
         self.setup()
-        
+
     def on_playlightbox_toggled(self, checkbox):
         self.app.preferences["xsheet.play_lightbox"] = checkbox.get_active()
 
@@ -535,7 +534,7 @@ class AnimationTool (gtk.VBox):
             dialogs.error(self, _("Ammount of frames must be integer"))
             return
         if ammount < 1:
-            dialogs.error(self, 
+            dialogs.error(self,
                 _("Ammount of frames must be bigger than one"))
             return
         self.ani.insert_frames(ammount)
@@ -551,7 +550,7 @@ class AnimationTool (gtk.VBox):
             dialogs.error(self, _("Ammount of frames must be integer"))
             return
         if ammount < 1:
-            dialogs.error(self, 
+            dialogs.error(self,
                 _("Ammount of frames must be bigger than one"))
             return
         self.ani.remove_frames(ammount)
