@@ -93,11 +93,21 @@ def get_handler_object(app, action_name):
     """
     from canvasevent import ModeRegistry, InteractionMode
     mode_class = ModeRegistry.get_mode_class(action_name)
+
+    popup_states = {}
+    try:
+        popup_states = app.drawWindow.popup_states
+    except AttributeError:
+        #TODO This fixes a startup traceback, but unclear why it occurs since
+        # popup_states is defined. Maybe it's a time-dependent bug
+        pass
+
+
     if mode_class is not None:
         assert issubclass(mode_class, InteractionMode)
         return ("mode_class", mode_class)
-    elif action_name in app.drawWindow.popup_states:
-        popup_state = app.drawWindow.popup_states[action_name]
+    elif action_name in popup_states:
+        popup_state = popup_states[action_name]
         return ("popup_state", popup_state)
     else:
         action = app.find_action(action_name)
