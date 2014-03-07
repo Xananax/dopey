@@ -106,6 +106,7 @@ class DrawWindow (gtk.Window):
         app = application.get_app()
         self.app = app
         self.app.kbm.add_window(self)
+        self.ani = app.doc.ani.model
 
         # Window handling
         self._updating_toggled_item = False
