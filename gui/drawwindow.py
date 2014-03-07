@@ -106,7 +106,6 @@ class DrawWindow (gtk.Window):
         app = application.get_app()
         self.app = app
         self.app.kbm.add_window(self)
-        self.ani = app.doc.ani.model
 
         # Window handling
         self._updating_toggled_item = False
@@ -895,59 +894,69 @@ class DrawWindow (gtk.Window):
         return True
 
     def previous_frame_cb(self, action):
-        if self.ani.model.frames.has_previous():
-            self.ani.model.previous_frame()
+        ani = self.app.doc.ani.model   # this is not set yet in __init__
+        if ani.frames.has_previous():
+            ani.previous_frame()
 
     def next_frame_cb(self, action):
-        if self.ani.model.frames.has_next():
-            self.ani.model.next_frame()
+        ani = self.app.doc.ani.model
+        if ani.frames.has_next():
+            ani.next_frame()
 
     def previous_celframe_cb(self, action):
-        if self.ani.model.frames.has_previous(with_cel=True):
-            self.ani.model.previous_frame(with_cel=True)
+        ani = self.app.doc.ani.model
+        if ani.frames.has_previous(with_cel=True):
+            ani.previous_frame(with_cel=True)
 
     def next_celframe_cb(self, action):
-        if self.ani.model.frames.has_next(with_cel=True):
-            self.ani.model.next_frame(with_cel=True)
+        ani = self.app.doc.ani.model
+        if ani.frames.has_next(with_cel=True):
+            ani.next_frame(with_cel=True)
 
     def previous_keyframe_cb(self, action):
-        if self.ani.model.frames.has_previous_key():
-            self.ani.model.previous_keyframe()
+        ani = self.app.doc.ani.model
+        if ani.frames.has_previous_key():
+            ani.previous_keyframe()
 
     def next_keyframe_cb(self, action):
-        if self.ani.model.frames.has_next_key():
-            self.ani.model.next_keyframe()
+        ani = self.app.doc.ani.model
+        if ani.frames.has_next_key():
+            ani.next_keyframe()
 
     def add_cel_cb(self, action):
-        self.ani.model.add_cel()
+        self.app.doc.ani.model.add_cel()
 
     def toggle_skip_cb(self, action):
-        self.ani.model.toggle_skip_visible()
+        self.app.doc.ani.model.toggle_skip_visible()
 
     def playpause_animation_cb(self, action):
-        self.ani.model.playpause_animation()
+        self.app.doc.ani.model.playpause_animation()
 
     def stop_animation_cb(self, action):
-        if self.ani.model.player_state == "play":
-            self.ani.model.stop_animation()
+        ani = self.app.doc.ani.model
+        if ani.player_state == "play":
+            ani.stop_animation()
 
     def toggle_key_cb(self, action):
-        self.ani.model.toggle_key()
+        self.app.doc.ani.model.toggle_key()
 
     def insert_frame_cb(self, action):
-        self.ani.model.insert_frames()
+        self.app.doc.ani.model.insert_frames()
 
     def remove_frame_cb(self, action):
-        self.ani.model.remove_frames()
+        self.app.doc.ani.model.remove_frames()
 
     def cut_cel_cb(self, action):
-        if self.ani.model.can_cutcopy():
-            self.ani.model.cutcopy_cel('cut')
+        ani = self.app.doc.ani.model
+        if ani.can_cutcopy():
+            ani.cutcopy_cel('cut')
 
     def copy_cel_cb(self, action):
-        if self.ani.model.can_cutcopy():
-            self.ani.model.cutcopy_cel('copy')
+        ani = self.app.doc.ani.model
+        if ani.can_cutcopy():
+            ani.cutcopy_cel('copy')
 
     def paste_cel_cb(self, action):
-        if self.ani.model.can_paste():
-            self.ani.model.paste_cel()
+        ani = self.app.doc.ani.model
+        if ani.can_paste():
+            ani.paste_cel()
