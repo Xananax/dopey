@@ -435,6 +435,51 @@ def print_list(frames):
         print n, key(f), info(f)
 
 
+class Timeline(GObject.GObject):
+    ''' timeline is a gobject containing the layers
+        and information like fps, current frame or layer
+    '''
+    __gsignals__ = {
+        'change_current_frame': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
+        'change_selected_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
+        'update': (GObject.SIGNAL_RUN_FIRST, None,())
+    }
+    def __init__(self, layers=[[Frame()]], current=0):
+        GObject.GObject.__init__(self)
+        self.layers = []
+        for i in layers:
+            self.layers.append(FrameList(i))
+        self.layers = layers
+        self.current = current
+        self.selected_layer = 0
+        self.fps = 12
+        self.frame_width = 50
+        self.frame_height = 32
+        self.frame_height_li = [8, 16, 24, 32]
+        self.frame_height_n = 3
+        self.margin_top = 11
+        
+    def get_layer(self, n):
+        return self.layers[n]
+        
+    def set_frame_height(self, adj):
+        n = int(adj.props.value)
+        self.frame_height = self.frame_height_li[n]
+        self.emit('update')
+        
+    def do_change_current_frame(self, n):
+        self.current = max(n, 0)
+        self.emit('update')
+        
+    def do_change_selected_layer(self, n):
+        if 0 <= n < len(self.layers):
+            self.selected_layer = n
+            self.emit('update')
+        
+    def frame_count(self):
+        return max([len(l) for l in self.layers])
+        
+        
 __test__ = dict(allem="""
 
 Moving through frames
