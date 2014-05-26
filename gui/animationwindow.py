@@ -24,7 +24,7 @@ COLUMNS_ID = dict((name, i) for i, name in enumerate(COLUMNS_NAME))
 class AnimationTool (gtk.VBox):
 
     stock_id = 'mypaint-tool-animation'
-
+    
     tool_widget_title = _("Animation")
 
     tool_widget_icon_name = "mypaint-tool-animation"
@@ -32,7 +32,7 @@ class AnimationTool (gtk.VBox):
     tool_widget_description = _("Create cel-based animation")
 
     __gtype_name__ = 'MyPaintAnimationTool'
-
+    
     def __init__(self):
         gtk.VBox.__init__(self)
         from application import get_app
@@ -43,10 +43,10 @@ class AnimationTool (gtk.VBox):
 
         self.set_size_request(200, 150)
         self.app.doc.model.doc_observers.append(self.doc_structure_modified_cb)
-
+        
         # create list:
         self.listmodel = self.create_list()
-
+        
         # create tree view:
         self.treeview = gtk.TreeView(self.listmodel)
         self.treeview.set_rules_hint(True)
@@ -54,16 +54,17 @@ class AnimationTool (gtk.VBox):
         treesel = self.treeview.get_selection()
         treesel.set_mode(gtk.SELECTION_SINGLE)
         self.changed_handler = treesel.connect('changed', self.on_row_changed)
-
+        self.treeview.connect('row-activated', self.on_row_activated)
+        
         self.add_columns()
-
+        
         layers_scroll = gtk.ScrolledWindow()
         layers_scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
         layers_scroll.set_placement(gtk.CORNER_TOP_RIGHT)
         layers_scroll.add(self.treeview)
 
         # xsheet controls:
-
+        
         def pixbuf_button(pixbuf):
             b = gtk.Button()
             img = gtk.Image()
@@ -75,47 +76,48 @@ class AnimationTool (gtk.VBox):
         self.key_button = pixbuf_button(pixbuf_key)
         self.key_button.connect('clicked', self.on_toggle_key)
         self.key_button.set_tooltip_text(_('Toggle Keyframe'))
-
+        
         pixbuf_skip = self.app.pixmaps.cel_skip
         self.skip_button = pixbuf_button(pixbuf_skip)
         self.skip_button.connect('clicked', self.on_toggle_skip)
         self.skip_button.set_tooltip_text(_('Set/Unset onion skin'))
-
-        self.chdesc_button = stock_button(gtk.STOCK_ITALIC)
-        self.chdesc_button.connect('clicked', self.on_change_description)
-        self.chdesc_button.set_tooltip_text(_('Change Cel Description'))
-
+        
         pixbuf_add = self.app.pixmaps.cel_add
         self.add_cel_button = pixbuf_button(pixbuf_add)
         self.add_cel_button.connect('clicked', self.on_add_cel)
         self.add_cel_button.set_tooltip_text(_('Add cel to this frame'))
+        
+        insert_frame_button = stock_button(gtk.STOCK_ADD)
+        insert_frame_button.connect('clicked', self.on_insert_frame)
+        insert_frame_button.set_tooltip_text(_('Insert frame'))
+        self.insert_frame_button = insert_frame_button
 
-        pixbuf_remove = self.app.pixmaps.cel_remove
-        self.remove_cel_button = pixbuf_button(pixbuf_remove)
-        self.remove_cel_button.connect('clicked', self.on_remove_cel)
-        self.remove_cel_button.set_tooltip_text(_('Remove cel of this frame'))
-
+        remove_frame_button = stock_button(gtk.STOCK_REMOVE)
+        remove_frame_button.connect('clicked', self.on_remove_frame)
+        remove_frame_button.set_tooltip_text(_('Remove frame / cel'))
+        self.remove_frame_button = remove_frame_button
+        
         buttons_hbox = gtk.HBox()
         buttons_hbox.pack_start(self.key_button)
         buttons_hbox.pack_start(self.skip_button)
-        buttons_hbox.pack_start(self.chdesc_button)
         buttons_hbox.pack_start(self.add_cel_button)
-        buttons_hbox.pack_start(self.remove_cel_button)
+        buttons_hbox.pack_start(insert_frame_button)
+        buttons_hbox.pack_start(remove_frame_button)
 
         # player controls:
-
+        
         self.previous_button = stock_button(gtk.STOCK_GO_UP)
         self.previous_button.connect('clicked', self.on_previous_frame)
         self.previous_button.set_tooltip_text(_('Previous Frame'))
-
+        
         self.next_button = stock_button(gtk.STOCK_GO_DOWN)
         self.next_button.connect('clicked', self.on_next_frame)
         self.next_button.set_tooltip_text(_('Next Frame'))
-
+        
         self.play_button = stock_button(gtk.STOCK_MEDIA_PLAY)
         self.play_button.connect('clicked', self.on_animation_play)
         self.play_button.set_tooltip_text(_('Play animation'))
-
+        
         self.pause_button = stock_button(gtk.STOCK_MEDIA_PAUSE)
         self.pause_button.connect('clicked', self.on_animation_pause)
         self.pause_button.set_tooltip_text(_('Pause animation'))
@@ -132,17 +134,6 @@ class AnimationTool (gtk.VBox):
         anibuttons_hbox.pack_start(self.stop_button)
 
         # frames edit controls:
-
-        insert_frame_button = stock_button(gtk.STOCK_ADD)
-        insert_frame_button.connect('clicked', self.on_insert_frames)
-        insert_frame_button.set_tooltip_text(_('Insert frames'))
-        self.insert_frame_button = insert_frame_button
-
-        remove_frame_button = stock_button(gtk.STOCK_REMOVE)
-        remove_frame_button.connect('clicked', self.on_remove_frames)
-        remove_frame_button.set_tooltip_text(_('Remove frames'))
-        self.remove_frame_button = remove_frame_button
-
         cut_button = stock_button(gtk.STOCK_CUT)
         cut_button.connect('clicked', self.on_cut)
         cut_button.set_tooltip_text(_('Cut cel'))
@@ -159,8 +150,6 @@ class AnimationTool (gtk.VBox):
         self.paste_button = paste_button
 
         editbuttons_hbox = gtk.HBox()
-        editbuttons_hbox.pack_start(insert_frame_button)
-        editbuttons_hbox.pack_start(remove_frame_button)
         editbuttons_hbox.pack_start(cut_button)
         editbuttons_hbox.pack_start(copy_button)
         editbuttons_hbox.pack_start(paste_button)
@@ -199,9 +188,9 @@ class AnimationTool (gtk.VBox):
         opacity_checkbox('other keys', _('Other keys'), _("Show the other keys cels."))
         opacity_checkbox('other', _('Other'), _("Show the rest of the cels."))
 
-        self.framerate_adjustment = gtk.Adjustment(value=self.ani.framerate, lower=1, upper=120, step_incr=0.01)
+        self.framerate_adjustment = gtk.Adjustment(value=self.ani.framerate, lower=1, upper=120, step_incr=1)
         self.framerate_adjustment.connect("value-changed", self.on_framerate_changed)
-        self.framerate_entry = gtk.SpinButton(adjustment=self.framerate_adjustment, digits=2, climb_rate=1.5)
+        self.framerate_entry = gtk.SpinButton(adjustment=self.framerate_adjustment, digits=0, climb_rate=1.5)
         framerate_lbl = gtk.Label(_('Frame rate:'))
         framerate_hbox = gtk.HBox()
         framerate_hbox.pack_start(framerate_lbl, False, False)
@@ -326,7 +315,7 @@ class AnimationTool (gtk.VBox):
         for i, frame in xsheet_list:
             listmodel.append((i, frame))
         return listmodel
-
+    
     def add_columns(self):
         listmodel = self.treeview.get_model()
         font = pango.FontDescription('normal 8')
@@ -362,7 +351,7 @@ class AnimationTool (gtk.VBox):
         self.treeview.append_column(framenumber_col)
         self.treeview.append_column(icon_col)
         self.treeview.append_column(description_col)
-
+        
     def _change_player_buttons(self):
         if self.is_playing:
             self.play_button.hide()
@@ -379,51 +368,46 @@ class AnimationTool (gtk.VBox):
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
 
-        f = self.ani.frames.get_selected()
-        if f.cel is None:
-            self.add_cel_button.show()
-            self.remove_cel_button.hide()
-        else:
-            self.add_cel_button.hide()
-            self.remove_cel_button.show()
-
     def doc_structure_modified_cb(self, *args):
         self.framerate_adjustment.set_value(self.ani.framerate)
-
+    
     def on_row_changed(self, treesel):
         model, it = treesel.get_selected()
         frame_idx = model.get_value(it, COLUMNS_ID['frame_index'])
         self.ani.select_frame(frame_idx)
         self._update_buttons_sensitive()
-
+    
+    def on_row_activated(self, a, r, g):
+        treesel = self.treeview.get_selection()
+        model, it = treesel.get_selected()
+        frame = model.get_value(it, COLUMNS_ID['frame_data'])
+        description = anidialogs.ask_for(self, _("Change description"),
+            _("Description"), frame.description)
+        if description:
+            self.ani.change_description(description)
+            
     def on_toggle_key(self, button):
         self.ani.toggle_key()
 
     def on_toggle_skip(self, button):
         self.ani.toggle_skip_visible()
-
+    
     def on_previous_frame(self, button):
         self.ani.previous_frame()
-
+    
     def on_next_frame(self, button):
         self.ani.next_frame()
 
-    def on_change_description(self, button):
-        treesel = self.treeview.get_selection()
-        model, it = treesel.get_selected()
-        frame = model.get_value(it, COLUMNS_ID['frame_data'])
-
-        description = anidialogs.ask_for(self, _("Change description"),
-            _("Description"), frame.description)
-        if description:
-            self.ani.change_description(description)
-
+    
     def on_add_cel(self, button):
         self.ani.add_cel()
+        
+    def on_insert_frame(self, button):
+        self.ani.insert_frames(1)
 
-    def on_remove_cel(self, button):
-        self.ani.remove_cel()
-
+    def on_remove_frame(self, button):
+        self.ani.remove_frame()
+    
     def _get_row_class(self, model, it):
         """Return 0 if even row, 1 if odd row."""
         path = model.get_path(it)[0]
@@ -432,11 +416,11 @@ class AnimationTool (gtk.VBox):
     def set_number(self, column, cell, model, it, data):
         idx = model.get_value(it, COLUMNS_ID['frame_index'])
         cell.set_property('text', str(idx+1))
-
+        
     def set_description(self, column, cell, model, it, data):
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
         cell.set_property('text', frame.description)
-
+        
     def set_icon(self, column, cell, model, it, data):
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
         pixname = 'frame'
@@ -515,7 +499,7 @@ class AnimationTool (gtk.VBox):
         # TODO, this is a quick fix, better is to update only the rows
         # height
         self.setup()
-
+        
     def on_playlightbox_toggled(self, checkbox):
         self.app.preferences["xsheet.play_lightbox"] = checkbox.get_active()
 
@@ -523,37 +507,6 @@ class AnimationTool (gtk.VBox):
         self.app.preferences["xsheet.lightbox_show_" + nextprev] = checkbox.get_active()
         self.ani.toggle_nextprev(nextprev, checkbox.get_active())
 
-    def on_insert_frames(self, button):
-        ammount = anidialogs.ask_for(self, _("Insert frames"),
-            _("Ammount of frames to insert:"), "1")
-        try:
-            ammount = int(ammount)
-        except TypeError:
-            return
-        except ValueError:
-            dialogs.error(self, _("Ammount of frames must be integer"))
-            return
-        if ammount < 1:
-            dialogs.error(self,
-                _("Ammount of frames must be bigger than one"))
-            return
-        self.ani.insert_frames(ammount)
-
-    def on_remove_frames(self, button):
-        ammount = anidialogs.ask_for(self, _("Remove frames"),
-            _("Ammount of frames to remove:"), "1")
-        try:
-            ammount = int(ammount)
-        except TypeError:
-            return
-        except ValueError:
-            dialogs.error(self, _("Ammount of frames must be integer"))
-            return
-        if ammount < 1:
-            dialogs.error(self,
-                _("Ammount of frames must be bigger than one"))
-            return
-        self.ani.remove_frames(ammount)
 
     def on_cut(self, button):
         self.ani.cutcopy_cel('cut')

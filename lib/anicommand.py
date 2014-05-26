@@ -8,6 +8,7 @@
 
 from command import Action, SelectLayer
 import layer
+from gettext import gettext as _
 
 def layername_from_description(description):
     layername = "CEL"
@@ -17,6 +18,7 @@ def layername_from_description(description):
 
 
 class SelectFrame(Action):
+    display_name = _("Select frame")
     def __init__(self, doc, idx):
         self.doc = doc
         self.frames = doc.ani.frames
@@ -46,6 +48,7 @@ class SelectFrame(Action):
 
 
 class ToggleKey(Action):
+    display_name = _("Toggle key")
     def __init__(self, doc, frame):
         self.doc = doc
         self.frame = frame
@@ -63,6 +66,7 @@ class ToggleKey(Action):
 
 
 class ToggleSkipVisible(Action):
+    display_name = _("Toggle skip visible")
     def __init__(self, doc, frame):
         self.doc = doc
         self.frame = frame
@@ -80,6 +84,7 @@ class ToggleSkipVisible(Action):
 
 
 class ChangeDescription(Action):
+    display_name = _("Change description")
     def __init__(self, doc, frame, new_description):
         self.doc = doc
         self.frame = frame
@@ -103,6 +108,7 @@ class ChangeDescription(Action):
 
 
 class AddCel(Action):
+    display_name = _("Add cel")
     def __init__(self, doc, frame):
         self.doc = doc
         self.frame = frame
@@ -131,56 +137,8 @@ class AddCel(Action):
         self._notify_document_observers()
 
 
-class RemoveCel(Action):
-    def __init__(self, doc, frame):
-        self.doc = doc
-        self.frame = frame
-        self.layer = self.frame.cel
-        self.prev_idx = None
-    
-    def redo(self):
-        num = self.doc.ani.frames.count_cel(self.layer)
-        if num == 1:
-            self.doc.layers.remove(self.layer)
-            self.prev_idx = self.doc.layer_idx
-            self.doc.layer_idx = len(self.doc.layers) - 1
-            self._notify_canvas_observers([self.layer])
-
-        self.frame.remove_cel()
-
-        self.doc.ani.update_opacities()
-        self._notify_document_observers()
-    
-    def undo(self):
-        if self.prev_idx is not None:
-            self.doc.layers.append(self.layer)
-            self.doc.layer_idx = self.prev_idx
-            self._notify_canvas_observers([self.layer])
-
-        self.frame.add_cel(self.layer)
-
-        self.doc.ani.update_opacities()
-        self._notify_document_observers()
-
-
-class AppendFrames(Action):
-    def __init__(self, doc, length):
-        self.doc = doc
-        self.frames = doc.ani.frames
-        self.length = length
-
-    def redo(self):
-        self.frames.append_frames(self.length)
-        self.doc.ani.cleared = True
-        self._notify_document_observers()
-
-    def undo(self):
-        self.frames.remove_frames(self.length)
-        self.doc.ani.cleared = True
-        self._notify_document_observers()
-
-
 class InsertFrames(Action):
+    display_name = _("Insert Frame")
     def __init__(self, doc, length):
         self.doc = doc
         self.frames = doc.ani.frames
@@ -198,41 +156,69 @@ class InsertFrames(Action):
         self._notify_document_observers()
 
 
-class RemoveFrames(Action):
+class RemoveFrameCel(Action):
+    display_name = _("Remove frame / cel")
+    def __init__(self, doc, frame):
+        self.doc = doc
+        self.frames = doc.ani.frames
+        self.frame = frame
+        self.prev_idx = None
+        self.removed_frame = True
+        self.layer = None
+        
+    def redo(self):
+        if self.frame.cel:
+            layer = self.frame.cel
+            self.doc.layers.remove(layer)
+            self.prev_idx = self.doc.layer_idx
+            self.doc.layer_idx = len(self.doc.layers) - 1
+            self._notify_canvas_observers([layer])
+            
+        if len(self.frames) == 1:
+            self.removed_frame = False
+            self.layer = self.frame.cel
+            self.frame.remove_cel()
+        else:
+            self.frames.remove_frames(1)
+        
+        self.doc.ani.update_opacities()
+        self.doc.ani.cleared = True
+        self._notify_document_observers()
+            
+    def undo(self):
+        if not self.removed_frame:
+            self.frame.add_cel(self.layer)
+        else:
+            self.frames.insert_frames([self.frame])
+        if self.frame.cel:
+            self.doc.layers.append(self.frame.cel)
+            self.doc.layer_idx = self.prev_idx
+            self._notify_canvas_observers([self.frame.cel])
+        self.doc.ani.update_opacities()
+        self.doc.ani.cleared = True
+        self._notify_document_observers()
+
+
+class AppendFrames(Action):
+    display_name = _("Append frame")
     def __init__(self, doc, length):
         self.doc = doc
         self.frames = doc.ani.frames
-        self.idx = doc.ani.frames.idx
         self.length = length
-        self.frames_to_remove = self.frames.frames_to_remove(self.length)
-    
+
     def redo(self):
-        for frame in self.frames_to_remove:
-            if frame.cel is not None and \
-            self.doc.ani.frames.count_cel(frame.cel) == 1:
-                self.doc.layers.remove(frame.cel)
-                self.doc.layer_idx = len(self.doc.layers) - 1
-                self._notify_canvas_observers(frame.cel)
-
-        self.frames.remove_frames(self.length)
-
+        self.frames.append_frames(self.length)
         self.doc.ani.cleared = True
         self._notify_document_observers()
-        
+
     def undo(self):
-        for frame in self.frames_to_remove:
-            if frame.cel is not None and \
-            self.doc.ani.frames.count_cel(frame.cel) == 0:
-                self.doc.layers.append(frame.cel)
-                self._notify_canvas_observers([frame.cel])
-
-        self.frames.insert_frames(self.frames_to_remove)
-
+        self.frames.remove_frames(self.length)
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
 
 class PasteCel(Action):
+    display_name = _("Paste cel")
     def __init__(self, doc, frame):
         self.doc = doc
         self.frame = frame
