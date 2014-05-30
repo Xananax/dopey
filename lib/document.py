@@ -738,6 +738,9 @@ class Document():
             else:
                 pixbufsurface.save_as_png(self, filename, *doc_bbox, alpha=False, **kwargs)
 
+    def save_gif(self, filename, **kwargs):
+        return self.ani.save_gif(filename, **kwargs)
+
     def save_avi(self, filename, **kwargs):
         return self.ani.save_avi(filename, **kwargs)
 

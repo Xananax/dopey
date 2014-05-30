@@ -183,6 +183,44 @@ class Animation(object):
             cel = self.frames.cel_at(i)
             cel._surface.save_as_png(filename, *doc_bbox, **kwargs)
 
+    def save_gif(self, filename, gif_fps=24, gif_loop=0, **kwargs):
+        # Requires command tool imagemagick.
+        tempdir = tempfile.mkdtemp()
+        gifs_tempdir = os.path.join(tempdir, 'gifs')
+        os.mkdir(gifs_tempdir)
+        base_filename = os.path.basename(filename)
+        prefix, ext = os.path.splitext(base_filename)
+        out_filename = os.path.join(os.path.dirname(filename), prefix + '.gif')
+
+        pngs_filename = os.path.join(tempdir, 'tempani.png')
+        self.save_png(pngs_filename)
+
+        # convert pngs to jpegs with imagemagick command:
+        pngs_list = glob.glob(tempdir + os.path.sep + '*png')
+        pngs_list.sort()
+        for png_file in pngs_list:
+            f_basename = os.path.basename(png_file)
+            name, ext = os.path.splitext(f_basename)
+            gif_file = os.path.join(gifs_tempdir, name + '.gif')
+            print "converting %s to %s..." % (png_file, gif_file)
+            call(["convert",
+                  "-background", "white",
+                  "-flatten",
+                  png_file, gif_file])
+
+        # convert the previous gifs to animated gif with imagemagick command:
+        gifs = gifs_tempdir + os.path.sep + 'tempani-*.gif'
+	gif_filename = os.path.join(tempdir, 'temp.gif')
+        call(["convert",
+              "-delay", "1x" + str(gif_fps),
+              "-loop", str(gif_loop),
+              gifs, gif_filename])
+
+        # optimize gif size:
+        call(["convert",
+              "-layers", "Optimize",
+              gif_filename, out_filename])
+
     def save_avi(self, filename, vid_width=800, vid_fps=24, **kwargs):
         """
         Save video file with codec mpeg4.
