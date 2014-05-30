@@ -10,10 +10,10 @@ from command import Action, SelectLayer
 import layer
 from gettext import gettext as _
 
-def layername_from_description(description):
-    layername = "CEL"
+def layername_from_description(idx, description):
+    layername = "CEL " + str(idx + 1)
     if description != '':
-        layername += " " + description
+        layername += ": " + description
     return layername
 
 
@@ -85,9 +85,10 @@ class ToggleSkipVisible(Action):
 
 class ChangeDescription(Action):
     display_name = _("Change description")
-    def __init__(self, doc, frame, new_description):
+    def __init__(self, doc, frame, idx, new_description):
         self.doc = doc
         self.frame = frame
+	self.idx = idx
         self.new_description = new_description
         if self.frame.cel != None:
             self.old_layername = self.frame.cel.name
@@ -97,7 +98,7 @@ class ChangeDescription(Action):
         self.frame.description = self.new_description
         self._notify_document_observers()
         if self.frame.cel != None:
-            layername = layername_from_description(self.frame.description)
+            layername = layername_from_description(self.idx, self.frame.description)
             self.frame.cel.name = layername
 
     def undo(self):
@@ -109,12 +110,13 @@ class ChangeDescription(Action):
 
 class AddCel(Action):
     display_name = _("Add cel")
-    def __init__(self, doc, frame):
+    def __init__(self, doc, frame, idx):
         self.doc = doc
         self.frame = frame
+	self.idx = idx
 
         # Create new layer:
-        layername = layername_from_description(self.frame.description)
+        layername = layername_from_description(self.idx, self.frame.description)
         self.layer = layer.Layer(name=layername)
         self.layer._surface.observers.append(self.doc.layer_modified_cb)
     

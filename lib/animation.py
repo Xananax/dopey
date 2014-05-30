@@ -326,13 +326,13 @@ class Animation(object):
     
     def change_description(self, new_description):
         frame = self.frames.get_selected()
-        self.doc.do(anicommand.ChangeDescription(self.doc, frame, new_description))
+        self.doc.do(anicommand.ChangeDescription(self.doc, frame, self.frames.idx, new_description))
     
     def add_cel(self):
         frame = self.frames.get_selected()
         if frame.cel is not None:
             return
-        self.doc.do(anicommand.AddCel(self.doc, frame))
+        self.doc.do(anicommand.AddCel(self.doc, frame, self.frames.idx))
 
     def insert_frames(self, ammount=1):
         self.doc.do(anicommand.InsertFrames(self.doc, ammount))
