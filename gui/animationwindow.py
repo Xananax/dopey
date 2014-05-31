@@ -58,10 +58,10 @@ class AnimationTool (gtk.VBox):
         
         self.add_columns()
         
-        layers_scroll = gtk.ScrolledWindow()
-        layers_scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-        layers_scroll.set_placement(gtk.CORNER_TOP_RIGHT)
-        layers_scroll.add(self.treeview)
+        frames_scroll = gtk.ScrolledWindow()
+        frames_scroll.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        frames_scroll.set_placement(gtk.CORNER_TOP_RIGHT)
+        frames_scroll.add(self.treeview)
 
         # xsheet controls:
         
@@ -160,6 +160,29 @@ class AnimationTool (gtk.VBox):
         editbuttons_hbox.pack_start(copy_button)
         editbuttons_hbox.pack_start(paste_button)
 
+        # layers controls:
+
+        self.add_layer_button = stock_button(gtk.STOCK_ADD)
+        self.add_layer_button.connect('clicked', self.on_add_layer)
+        self.add_layer_button.set_tooltip_text(_('Add layer'))
+        self.remove_layer_button = stock_button(gtk.STOCK_REMOVE)
+        self.remove_layer_button.connect('clicked', self.on_remove_layer)
+        self.remove_layer_button.set_tooltip_text(_('Remove layer'))
+        
+        self.previous_layer_button = stock_button(gtk.STOCK_GO_UP)
+        self.previous_layer_button.connect('clicked', self.on_previous_layer)
+        self.previous_layer_button.set_tooltip_text(_('Previous Layer'))
+        
+        self.next_layer_button = stock_button(gtk.STOCK_GO_DOWN)
+        self.next_layer_button.connect('clicked', self.on_next_layer)
+        self.next_layer_button.set_tooltip_text(_('Next Layer'))
+
+        layerbuttons_hbox = gtk.HBox()
+        layerbuttons_hbox.pack_start(self.add_layer_button)
+        layerbuttons_hbox.pack_start(self.remove_layer_button)
+        layerbuttons_hbox.pack_start(self.previous_layer_button)
+        layerbuttons_hbox.pack_start(self.next_layer_button)
+
         # lightbox controls:
 
         adj = gtk.Adjustment(lower=0, upper=100, step_incr=1, page_incr=10)
@@ -227,6 +250,9 @@ class AnimationTool (gtk.VBox):
         controls_vbox.pack_start(anibuttons_hbox, expand=False)
         controls_vbox.pack_start(editbuttons_hbox, expand=False)
 
+        layers_vbox = gtk.VBox()
+        layers_vbox.pack_start(layerbuttons_hbox, expand=False)
+
         preferences_vbox = gtk.VBox()
         preferences_vbox.pack_start(framerate_hbox, expand=False)
         preferences_vbox.pack_start(icons_cb, expand=False)
@@ -241,13 +267,19 @@ class AnimationTool (gtk.VBox):
         self.controls_expander.connect("notify::expanded",
             self.expanded_cb, 'controls')
 
+        self.layers_expander = gtk.Expander(label=_('Layers'))
+        self.layers_expander.add(layers_vbox)
+        self.layers_expander.connect("notify::expanded",
+            self.expanded_cb, 'layers')
+
         self.prefs_expander = gtk.Expander(label=_('Preferences'))
         self.prefs_expander.add(preferences_vbox)
         self.prefs_expander.connect("notify::expanded",
             self.expanded_cb, 'preferences')
 
-        self.pack_start(layers_scroll)
+        self.pack_start(frames_scroll)
         self.pack_start(self.controls_expander, expand=False)
+        self.pack_start(self.layers_expander, expand=False)
         self.pack_start(self.prefs_expander, expand=False)
 
         self.show_all()
@@ -292,6 +324,7 @@ class AnimationTool (gtk.VBox):
 
         treesel.handler_unblock(self.changed_handler)
 
+
         self.on_opacityfactor_changed()
         self.setup_lightbox()
 
@@ -321,6 +354,12 @@ class AnimationTool (gtk.VBox):
         for i, frame in xsheet_list:
             listmodel.append((i, frame))
         return listmodel
+
+    def create_layer_list(self):
+        layerlist = gtk.ListStore(object)
+        for frame in self.ani.frames:
+            layerlist.append([str(frame)])
+        return layerlist
     
     def add_columns(self):
         listmodel = self.treeview.get_model()
@@ -370,6 +409,8 @@ class AnimationTool (gtk.VBox):
     def _update_buttons_sensitive(self):
         self.previous_button.set_sensitive(self.ani.frames.has_previous())
         self.next_button.set_sensitive(self.ani.frames.has_next())
+        self.previous_layer_button.set_sensitive(self.ani.layers.has_previous())
+        self.next_layer_button.set_sensitive(self.ani.layers.has_next())
         self.cut_button.set_sensitive(self.ani.can_cutcopy())
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
@@ -388,7 +429,7 @@ class AnimationTool (gtk.VBox):
     def on_row_changed(self, treesel):
         model, it = treesel.get_selected()
         frame_idx = model.get_value(it, COLUMNS_ID['frame_index'])
-        self.ani.select_frame(frame_idx)
+        self.ani.select(frame_idx)
         self._update_buttons_sensitive()
     
     def on_row_activated(self, a, r, g):
@@ -412,7 +453,6 @@ class AnimationTool (gtk.VBox):
     def on_next_frame(self, button):
         self.ani.next_frame()
 
-    
     def on_add_cel(self, button):
         self.ani.add_cel()
     
@@ -424,6 +464,20 @@ class AnimationTool (gtk.VBox):
 
     def on_remove_frame(self, button):
         self.ani.remove_frame()
+
+    
+    def on_previous_layer(self, button):
+        self.ani.previous_layer()
+    
+    def on_next_layer(self, button):
+        self.ani.next_layer()
+        
+    def on_add_layer(self, button):
+        self.ani.add_layer()
+
+    def on_remove_layer(self, button):
+        self.ani.remove_layer()
+
     
     def _get_row_class(self, model, it):
         """Return 0 if even row, 1 if odd row."""
@@ -537,6 +591,8 @@ class AnimationTool (gtk.VBox):
     def show_cb(self, widget):
         if self.app.preferences.get("xsheet.expander-controls", False):
             self.controls_expander.set_expanded(True)
+        if self.app.preferences.get("xsheet.expander-layers", False):
+            self.layers_expander.set_expanded(True)
         if self.app.preferences.get("xsheet.expander-preferences", False):
             self.prefs_expander.set_expanded(True)
         self.expander_prefs_loaded = True

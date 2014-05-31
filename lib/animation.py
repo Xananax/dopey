@@ -16,7 +16,7 @@ from subprocess import call
 import pixbufsurface
 
 import anicommand
-from framelist import FrameList
+from anilayers import AnimationLayerList
 from xdna import XDNA
 
 
@@ -33,6 +33,7 @@ class Animation(object):
     def __init__(self, doc):
         self.doc = doc
         self.frames = None
+        self.layers = None
         self.framerate = 24.0
         self.cleared = False
         self.using_legacy = False
@@ -46,7 +47,9 @@ class Animation(object):
         self.edit_frame = None
 
     def clear_xsheet(self, init=False):
-        self.frames = FrameList(24, self.opacities)
+        self.layers = AnimationLayerList()
+        self.layers.append_layer(24, self.opacities)
+        self.frames = self.layers[0]
         self.cleared = True
     
     def legacy_xsheet_as_str(self):
@@ -287,7 +290,7 @@ class Animation(object):
         self._notify_canvas_observers(cur_cel)
 
     def update_opacities(self):
-        opacities, visible = self.frames.get_opacities()
+        opacities, visible = self.layers.get_opacities()
 
         for cel, opa in opacities.items():
             if cel is None:
@@ -378,15 +381,35 @@ class Animation(object):
             return
         self.doc.do(anicommand.RemoveCel(self.doc, frame))
 
-    def insert_frames(self, amount=1):
-        self.doc.do(anicommand.InsertFrames(self.doc, amount))
+    def insert_frames(self, ammount=1):
+        self.doc.do(anicommand.InsertFrames(self.doc, ammount))
 
     def remove_frame(self):
         frame = self.frames.get_selected()
         self.doc.do(anicommand.RemoveFrame(self.doc, frame))
 
-    def select_frame(self, idx):
+    def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
+
+    def previous_layer(self):					# === HERE ===
+        self.layers.goto_previous_layer()
+        self.frames = self.layers.get_selected_layer()
+        self.update_opacities()
+        self.cleared = True
+        self.doc.call_doc_observers()
+
+    def next_layer(self):
+        self.layers.goto_next_layer()
+        self.frames = self.layers.get_selected_layer()
+        self.update_opacities()
+        self.cleared = True
+        self.doc.call_doc_observers()
+
+    def add_layer(self):
+        self.doc.do(anicommand.InsertLayer(self.doc))
+
+    def remove_layer(self):
+        self.doc.do(anicommand.RemoveLayer(self.doc))
 
     def change_opacityfactor(self, opacityfactor):
         self.frames.set_opacityfactor(opacityfactor)

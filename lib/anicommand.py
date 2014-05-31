@@ -283,3 +283,64 @@ class PasteCel(Action):
         self.frame.add_cel(self.prev_cel)
         self.doc.ani.update_opacities()
         self._notify_document_observers()
+
+
+class InsertLayer(Action):
+    display_name = _("Insert Layer")
+    def __init__(self, doc):
+        self.doc = doc
+        self.layers = doc.ani.layers
+
+    def redo(self):
+        self.layers.insert_layer()
+        self.doc.ani.frames = self.layers.get_selected_layer()
+        self.doc.ani.cleared = True
+        self._notify_document_observers()
+
+    def undo(self):
+        self.frames.remove_layer()
+        self.doc.ani.frames = self.layers.get_selected_layer()
+        self.doc.ani.cleared = True
+        self._notify_document_observers()
+
+
+class RemoveLayer(Action):
+    display_name = _("Remove Layer")
+    def __init__(self, doc):
+        self.doc = doc
+        self.layers = doc.ani.layers
+        self.frames = doc.ani.frames
+        self.prev_idx = None
+        self.removed_frame = True
+        
+    def redo(self):
+        for f in self.frames:
+            if f.cel:
+                self.doc.layers.remove(f.cel)
+                f.remove_cel()
+        self.prev_idx = self.doc.layer_idx
+        self.doc.layer_idx = 0
+
+        if len(self.layers) == 1:
+            self.removed_layer = False
+        else:
+            self.layers.remove_layer()
+        
+        self.doc.ani.frames = self.layers.get_selected_layer()
+        self.doc.ani.update_opacities()
+        self.doc.ani.cleared = True
+        self._notify_document_observers()
+            
+    def undo(self):
+        if not self.removed_frame:
+            self.frame.add_cel(self.layer)
+        else:
+            self.frames.insert_frames([self.frame])
+        if self.frame.cel:
+            self.doc.layers.append(self.frame.cel)
+            self.doc.layer_idx = self.prev_idx
+            self._notify_canvas_observers([self.frame.cel])
+        self.doc.ani.frames = self.layers.get_selected_layer()
+        self.doc.ani.update_opacities()
+        self.doc.ani.cleared = True
+        self._notify_document_observers()

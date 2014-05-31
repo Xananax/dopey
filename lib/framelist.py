@@ -306,7 +306,7 @@ class FrameList(list):
         """
         return self.cel_at(self.index(frame))
 
-    def get_opacities(self):
+    def get_opacities(self, idx=None):
         """
         Return a map of cels and the opacity they should have.
 
@@ -315,6 +315,9 @@ class FrameList(list):
         transparented.
 
         """
+        if idx is not None:
+            self.idx = idx
+
         opacities = {}
 
         def get_opa(nextprev, c):
