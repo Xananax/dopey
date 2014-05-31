@@ -158,7 +158,39 @@ class InsertFrames(Action):
         self._notify_document_observers()
 
 
-class RemoveFrameCel(Action):
+class RemoveCel(Action):
+    def __init__(self, doc, frame):
+        self.doc = doc
+        self.frame = frame
+        self.layer = self.frame.cel
+        self.prev_idx = None
+    
+    def redo(self):
+        num = self.doc.ani.frames.count_cel(self.layer)
+        if num == 1:
+            self.doc.layers.remove(self.layer)
+            self.prev_idx = self.doc.layer_idx
+            self.doc.layer_idx = len(self.doc.layers) - 1
+            self._notify_canvas_observers([self.layer])
+
+        self.frame.remove_cel()
+
+        self.doc.ani.update_opacities()
+        self._notify_document_observers()
+    
+    def undo(self):
+        if self.prev_idx is not None:
+            self.doc.layers.append(self.layer)
+            self.doc.layer_idx = self.prev_idx
+            self._notify_canvas_observers([self.layer])
+
+        self.frame.add_cel(self.layer)
+
+        self.doc.ani.update_opacities()
+        self._notify_document_observers()
+
+
+class RemoveFrame(Action):
     display_name = _("Remove frame / cel")
     def __init__(self, doc, frame):
         self.doc = doc

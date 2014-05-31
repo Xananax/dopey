@@ -372,12 +372,18 @@ class Animation(object):
             return
         self.doc.do(anicommand.AddCel(self.doc, frame, self.frames.idx))
 
-    def insert_frames(self, ammount=1):
-        self.doc.do(anicommand.InsertFrames(self.doc, ammount))
+    def remove_cel(self):
+        frame = self.frames.get_selected()
+        if frame.cel is None:
+            return
+        self.doc.do(anicommand.RemoveCel(self.doc, frame))
+
+    def insert_frames(self, amount=1):
+        self.doc.do(anicommand.InsertFrames(self.doc, amount))
 
     def remove_frame(self):
         frame = self.frames.get_selected()
-        self.doc.do(anicommand.RemoveFrameCel(self.doc, frame))
+        self.doc.do(anicommand.RemoveFrame(self.doc, frame))
 
     def select_frame(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))

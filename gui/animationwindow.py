@@ -86,6 +86,11 @@ class AnimationTool (gtk.VBox):
         self.add_cel_button = pixbuf_button(pixbuf_add)
         self.add_cel_button.connect('clicked', self.on_add_cel)
         self.add_cel_button.set_tooltip_text(_('Add cel to this frame'))
+
+        pixbuf_remove = self.app.pixmaps.cel_remove
+        self.remove_cel_button = pixbuf_button(pixbuf_remove)
+        self.remove_cel_button.connect('clicked', self.on_remove_cel)
+        self.remove_cel_button.set_tooltip_text(_('Remove cel of this frame'))
         
         insert_frame_button = stock_button(gtk.STOCK_ADD)
         insert_frame_button.connect('clicked', self.on_insert_frame)
@@ -101,6 +106,7 @@ class AnimationTool (gtk.VBox):
         buttons_hbox.pack_start(self.key_button)
         buttons_hbox.pack_start(self.skip_button)
         buttons_hbox.pack_start(self.add_cel_button)
+        buttons_hbox.pack_start(self.remove_cel_button)
         buttons_hbox.pack_start(insert_frame_button)
         buttons_hbox.pack_start(remove_frame_button)
 
@@ -367,6 +373,14 @@ class AnimationTool (gtk.VBox):
         self.cut_button.set_sensitive(self.ani.can_cutcopy())
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
+        
+        f = self.ani.frames.get_selected()
+        if f.cel is None:
+            self.add_cel_button.show()
+            self.remove_cel_button.hide()
+        else:
+            self.add_cel_button.hide()
+            self.remove_cel_button.show()
 
     def doc_structure_modified_cb(self, *args):
         self.framerate_adjustment.set_value(self.ani.framerate)
@@ -401,6 +415,9 @@ class AnimationTool (gtk.VBox):
     
     def on_add_cel(self, button):
         self.ani.add_cel()
+    
+    def on_remove_cel(self, button):
+        self.ani.remove_cel()
         
     def on_insert_frame(self, button):
         self.ani.insert_frames(1)
