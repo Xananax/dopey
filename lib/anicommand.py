@@ -10,8 +10,8 @@ from command import Action, SelectLayer
 import layer
 from gettext import gettext as _
 
-def layername_from_description(idx, description):
-    layername = "CEL " + str(idx + 1)
+def layername_from_description(idx, lidx, description):
+    layername = "(" + str(lidx + 1) + ") CEL " + str(idx + 1)
     if description != '':
         layername += ": " + description
     return layername
@@ -89,6 +89,7 @@ class ChangeDescription(Action):
         self.doc = doc
         self.frame = frame
 	self.idx = idx
+        self.lidx = self.doc.ani.layers.idx
         self.new_description = new_description
         if self.frame.cel != None:
             self.old_layername = self.frame.cel.name
@@ -98,7 +99,7 @@ class ChangeDescription(Action):
         self.frame.description = self.new_description
         self._notify_document_observers()
         if self.frame.cel != None:
-            layername = layername_from_description(self.idx, self.frame.description)
+            layername = layername_from_description(self.idx, self.lidx, self.frame.description)
             self.frame.cel.name = layername
 
     def undo(self):
@@ -114,9 +115,10 @@ class AddCel(Action):
         self.doc = doc
         self.frame = frame
 	self.idx = idx
+        self.lidx = self.doc.ani.layers.idx
 
         # Create new layer:
-        layername = layername_from_description(self.idx, self.frame.description)
+        layername = layername_from_description(self.idx, self.lidx, self.frame.description)
         self.layer = layer.Layer(name=layername)
         self.layer._surface.observers.append(self.doc.layer_modified_cb)
     
@@ -349,16 +351,27 @@ class SortLayers(Action):
     display_name = _("Reorder Layer Stack")
     def __init__(self, doc, new_order):
         self.doc = doc
+        self.anilayers = self.doc.ani.layers
         self.old_order = doc.layers[:]
         self.selection = self.old_order[doc.layer_idx]
         self.new_order = new_order
     def redo(self):
+        self.old_names = []
+        for l in self.doc.layers:
+            self.old_names.append(l.name)
         self.doc.layers[:] = self.new_order
         self.doc.layer_idx = self.doc.layers.index(self.selection)
+        for l in range(len(self.anilayers)):
+            for f in range(len(self.anilayers[l])):
+                if self.anilayers[l][f].has_cel():
+                    new_name = layername_from_description(f, l, self.anilayers[l][f].description)
+                    self.anilayers[l][f].cel.name = new_name
         self._notify_canvas_observers(self.doc.layers)
         self._notify_document_observers()
     def undo(self):
         self.doc.layers[:] = self.old_order
         self.doc.layer_idx = self.doc.layers.index(self.selection)
+        for i in range(len(self.doc.layers)):
+            self.doc.layers[i].name = self.old_names[i]
         self._notify_canvas_observers(self.doc.layers)
         self._notify_document_observers()

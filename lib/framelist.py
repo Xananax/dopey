@@ -55,6 +55,9 @@ class Frame(object):
     def remove_cel(self):
         self.cel = None
 
+    def has_cel(self):
+        return self.cel is not None
+
 
 class FrameList(list):
     """
@@ -80,7 +83,7 @@ class FrameList(list):
             self.setup_init_frame(doc)
 
     def setup_init_frame(self, doc):
-        layer = Layer(name="CEL 1")
+        layer = Layer(name="(1) CEL 1")
         layer.content_observers.append(doc.layer_modified_cb)
         layer.set_symmetry_axis(doc.get_symmetry_axis())
         doc.layers.insert(0, layer)
