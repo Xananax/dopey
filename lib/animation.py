@@ -9,6 +9,7 @@
 import os
 import glob
 from gettext import gettext as _
+from layer import Layer
 import json
 import tempfile
 from subprocess import call
@@ -181,10 +182,22 @@ class Animation(object):
         if l[-1].isdigit():
             prefix = l[0]
         doc_bbox = self.doc.get_effective_bbox()
-        for i in range(len(self.frames)):
+        
+        length = 0
+        for i in range(len(self.layers)):
+            if len(self.layers[i]) > length:
+                length = len(self.layers[i])
+
+        for i in range(length):
+            frame = Layer()
+            for j in range(len(self.layers)):
+                cel = self.layers[j].cel_at(i)
+                visible, opacity = cel.visible, cel.opacity
+                cel.visible, cel.opacity = True, 1.0
+                cel.merge_into(frame)
+                cel.visible, cel.opacity = visible, opacity
             filename = '%s-%03d%s' % (prefix, i+1, ext)
-            cel = self.frames.cel_at(i)
-            cel._surface.save_as_png(filename, *doc_bbox, **kwargs)
+            frame._surface.save_as_png(filename, *doc_bbox, **kwargs)
 
     def save_gif(self, filename, gif_fps=24, gif_loop=0, **kwargs):
         # Requires command tool imagemagick.
