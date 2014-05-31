@@ -81,3 +81,12 @@ class AnimationLayerList(list):
             opacities.update(opac)
             visible.update(visi)
         return opacities, visible
+
+    def get_order(self, old_order):
+        new_order = []
+        for i in range(len(self)):
+            new_order.extend(self[i].get_all_cels())
+        if len(old_order) > len(self):
+            extra = [elem for elem in old_order if elem not in new_order]
+            new_order.extend(extra)
+        return new_order[::-1]

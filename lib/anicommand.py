@@ -344,3 +344,23 @@ class RemoveLayer(Action):
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
         self._notify_document_observers()
+
+class SortLayers(Action):
+    display_name = _("Reorder Layer Stack")
+    def __init__(self, doc, new_order):
+        self.doc = doc
+        self.old_order = doc.layers[:]
+        self.selection = self.old_order[doc.layer_idx]
+        self.new_order = new_order
+        for layer in new_order:
+            assert layer in self.old_order
+    def redo(self):
+        self.doc.layers[:] = self.new_order
+        self.doc.layer_idx = self.doc.layers.index(self.selection)
+        self._notify_canvas_observers(self.doc.layers)
+        self._notify_document_observers()
+    def undo(self):
+        self.doc.layers[:] = self.old_order
+        self.doc.layer_idx = self.doc.layers.index(self.selection)
+        self._notify_canvas_observers(self.doc.layers)
+        self._notify_document_observers()
