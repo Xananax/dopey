@@ -20,8 +20,8 @@ class AnimationLayerList(list):
         self.nextprev.update(nextprev)
 
 
-    def append_layer(self, length, opacities=None, active_cels=None, nextprev=None):
-        self.append(FrameList(length, opacities, active_cels, nextprev))
+    def append_layer(self, length, doc, opacities=None, active_cels=None, nextprev=None):
+        self.append(FrameList(length, doc, opacities, active_cels, nextprev))
 
     def remove_layer(self, length=1, at_end=False):
         removed = []
@@ -37,10 +37,10 @@ class AnimationLayerList(list):
             self.idx = len(self) - 1
         return removed
 
-    def insert_layer(self, idx=None):
+    def insert_layer(self, doc, idx=None):
         if idx is None:
             idx = self.idx
-        self.insert(idx, FrameList(len(self[self.idx])))
+        self.insert(idx, FrameList(len(self[self.idx]), doc))
 
     def get_selected_layer(self):
         return self[self.idx]

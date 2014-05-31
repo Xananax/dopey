@@ -47,9 +47,9 @@ class Animation(object):
         self.edit_operation = None
         self.edit_frame = None
 
-    def clear_xsheet(self, init=False):
+    def clear_xsheet(self, doc, init=False):
         self.layers = AnimationLayerList()
-        self.layers.append_layer(24, self.opacities)
+        self.layers.append_layer(24, doc, self.opacities)
         self.frames = self.layers[0]
         self.cleared = True
     
@@ -107,7 +107,7 @@ class Animation(object):
         str_data = self.xsheet_as_str()
         xsheetfile.write(str_data)
 
-    def str_to_xsheet(self, ani_data):
+    def str_to_xsheet(self, doc, ani_data):
         """
         Update FrameList from animation data.
     
@@ -119,7 +119,6 @@ class Animation(object):
         if type(data) is dict and data['XDNA']:
             print 'Loading using new file format'
             x = self.xdna
-
 
             raster_frames = data['xsheet']['raster_frame_lists']
 
@@ -144,7 +143,7 @@ class Animation(object):
             # load in legacy style
             print 'Loading using old format'
             self.using_legacy = True
-            self.frames = FrameList(len(data), self.opacities)
+            self.frames = FrameList(len(data), None, self.opacities)
             self.cleared = True
             for i, d in enumerate(data):
                 is_key, description, layer_idx = d
@@ -156,13 +155,13 @@ class Animation(object):
                 self.frames[i].description = description
                 self.frames[i].cel = cel
 
-    def _read_xsheet(self, xsheetfile):
+    def _read_xsheet(self, doc, xsheetfile):
         """
         Update FrameList from file.
     
         """
         ani_data = xsheetfile.read()
-        self.str_to_xsheet(ani_data)
+        self.str_to_xsheet(doc, ani_data)
     
     def save_xsheet(self, filename):
         root, ext = os.path.splitext(filename)
@@ -170,15 +169,15 @@ class Animation(object):
         xsheetfile = open(xsheet_fn, 'w')
         self._write_xsheet(xsheetfile)
     
-    def load_xsheet(self, filename):
+    def load_xsheet(self, doc, filename):
         root, ext = os.path.splitext(filename)
         xsheet_fn = root + '.xsheet'
         try:
             xsheetfile = open(xsheet_fn, 'r')
         except IOError:
-            self.clear_xsheet()
+            self.clear_xsheet(doc)
         else:
-            self._read_xsheet(xsheetfile)
+            self._read_xsheet(doc, xsheetfile)
     
     def save_png(self, filename, **kwargs):
         prefix, ext = os.path.splitext(filename)

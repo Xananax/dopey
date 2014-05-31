@@ -414,6 +414,7 @@ class AnimationTool (gtk.VBox):
         self.cut_button.set_sensitive(self.ani.can_cutcopy())
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
+        self.remove_cel_button.set_sensitive(bool(self.ani.frames.idx))
         
         f = self.ani.frames.get_selected()
         if f.cel is None:

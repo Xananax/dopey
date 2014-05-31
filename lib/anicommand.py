@@ -292,7 +292,7 @@ class InsertLayer(Action):
         self.layers = doc.ani.layers
 
     def redo(self):
-        self.layers.insert_layer()
+        self.layers.insert_layer(self.doc)
         self.doc.ani.frames = self.layers.get_selected_layer()
         self.doc.ani.cleared = True
         self._notify_document_observers()
@@ -352,8 +352,6 @@ class SortLayers(Action):
         self.old_order = doc.layers[:]
         self.selection = self.old_order[doc.layer_idx]
         self.new_order = new_order
-        for layer in new_order:
-            assert layer in self.old_order
     def redo(self):
         self.doc.layers[:] = self.new_order
         self.doc.layer_idx = self.doc.layers.index(self.selection)

@@ -246,7 +246,7 @@ class Document():
             for f in self.canvas_observers:
                 f(*bbox)
 
-        self.ani.clear_xsheet(init)
+        self.ani.clear_xsheet(self, init)
         self.call_doc_observers()
 
     def get_current_layer(self):
@@ -1039,9 +1039,9 @@ class Document():
 
         try:
             ani_data = z.read('animation.xsheet')
-            self.ani.str_to_xsheet(ani_data)
+            self.ani.str_to_xsheet(self, ani_data)
         except KeyError:
-            self.ani.load_xsheet(filename)
+            self.ani.load_xsheet(self, filename)
 
         if selected_layer is not None:
             for i, layer in zip(range(len(self.layers)), self.layers):

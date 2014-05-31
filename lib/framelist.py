@@ -6,6 +6,9 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
+from layer import Layer
+
+
 DEFAULT_OPACITIES = {
     'cel': 1./2, # The inmediate next and previous cels
     'key': 1./2, # The cel keys that are after and before the current cel
@@ -58,7 +61,7 @@ class FrameList(list):
     The list of frames that constitutes an animation.
 
     """
-    def __init__(self, length, opacities=None, active_cels=None, nextprev=None):
+    def __init__(self, length, doc=None, opacities=None, active_cels=None, nextprev=None):
         self.append_frames(length)
         self.idx = 0
         if opacities is None:
@@ -73,6 +76,21 @@ class FrameList(list):
         self.setup_opacities(opacities)
         self.setup_active_cels(active_cels)
         self.setup_nextprev(nextprev)
+        if doc is not None:
+            self.setup_init_frame(doc)
+
+    def setup_init_frame(self, doc):
+        layer = Layer(name="CEL 1")
+        layer.content_observers.append(doc.layer_modified_cb)
+        layer.set_symmetry_axis(doc.get_symmetry_axis())
+        doc.layers.insert(0, layer)
+        self[0].add_cel(layer)
+        if len(doc.layers) > 1:
+            doc.select_layer(len(doc.layers)-1)
+            doc.remove_layer()
+            doc.ani.frames = self
+            doc.ani.update_opacities()
+        doc.call_doc_observers()
 
     def setup_opacities(self, opacities):
         self.opacities.update(opacities)
