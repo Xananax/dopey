@@ -84,16 +84,17 @@ class Animation(object):
             }
         }
 
-        for f in self.frames:
-            if f.cel is not None:
-                layer_idx = self.doc.layers.index(f.cel)
-            else:
-                layer_idx = None
-            data['xsheet']['raster_frame_lists'][0].append({
-                'idx': layer_idx,
-                'is_key': f.is_key,
-                'description': f.description
-            })
+        for i in range(len(self.layers)):
+            for f in self.layers[i]:
+                if f.cel is not None:
+                    layer_idx = self.doc.layers.index(f.cel)
+                else:
+                    layer_idx = None
+                data['xsheet']['raster_frame_lists'][i].append({
+                    'idx': layer_idx,
+                    'is_key': f.is_key,
+                    'description': f.description
+                })
 
         str_data = json.dumps(data, sort_keys=True, indent=4)
         return str_data
@@ -119,21 +120,23 @@ class Animation(object):
             print 'Loading using new file format'
             x = self.xdna
 
-            # right now we only have one animatable layer, hence the first item
-            raster_frames = data['xsheet']['raster_frame_lists'][0]
 
-            self.frames = FrameList(len(raster_frames), self.opacities)
+            raster_frames = data['xsheet']['raster_frame_lists']
+
+            self.layers = AnimationLayerList()
             self.framerate = data['xsheet']['framerate']
             self.cleared = True
 
-            for i, d in enumerate(raster_frames):
-                if d['idx'] is not None:
-                    cel = self.doc.layers[d['idx']]
-                else:
-                    cel = None
-                self.frames[i].is_key = d['is_key']
-                self.frames[i].description = d['description']
-                self.frames[i].cel = cel
+            for j in range(len(raster_frames)):
+                self.layers.append_layer(len(raster_frames[j]), self.opacities)
+                for i, d in enumerate(raster_frames[j]):
+                    if d['idx'] is not None:
+                        cel = self.doc.layers[d['idx']]
+                    else:
+                        cel = None
+                    self.layers[j][i].is_key = d['is_key']
+                    self.layers[j][i].description = d['description']
+                    self.layers[j][i].cel = cel
 
         else:
             # load in legacy style
