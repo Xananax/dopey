@@ -323,11 +323,15 @@ class RemoveLayer(Action):
         self.prev_idx = self.doc.layer_idx
         self.doc.layer_idx = 0
 
-        if len(self.layers) == 1:
-            self.removed_layer = False
+        self.layers.remove_layer()
+        if len(self.layers) == 0:
+            self.layers.append_layer(24, self.doc)
+            self.doc.ani.frames = self.layers.get_selected_layer()
+            self.doc.layer_idx = 0
         else:
-            self.layers.remove_layer()
-        
+            if self.layers.idx == len(self.doc.layers):
+                self.layers.idx -= 1
+
         self.doc.ani.frames = self.layers.get_selected_layer()
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
@@ -349,12 +353,12 @@ class RemoveLayer(Action):
 
 class SortLayers(Action):
     display_name = _("Reorder Layer Stack")
-    def __init__(self, doc, new_order):
+    def __init__(self, doc):
         self.doc = doc
         self.anilayers = self.doc.ani.layers
+        self.new_order = self.anilayers.get_order(self.doc.layers)
         self.old_order = doc.layers[:]
         self.selection = self.old_order[doc.layer_idx]
-        self.new_order = new_order
     def redo(self):
         self.old_names = []
         for l in self.doc.layers:

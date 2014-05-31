@@ -394,27 +394,22 @@ class Animation(object):
         if frame.cel is not None:
             return
         self.doc.do(anicommand.AddCel(self.doc, frame, self.frames.idx))
-        order = self.layers.get_order(self.doc.layers)
-        self.doc.do(anicommand.SortLayers(self.doc, order))
+        self.doc.do(anicommand.SortLayers(self.doc))
 
     def remove_cel(self):
         frame = self.frames.get_selected()
         if frame.cel is None:
             return
         self.doc.do(anicommand.RemoveCel(self.doc, frame))
-        order = self.layers.get_order(self.doc.layers)
-        self.doc.do(anicommand.SortLayers(self.doc, order))
 
     def insert_frames(self, ammount=1):
         self.doc.do(anicommand.InsertFrames(self.doc, ammount))
-        order = self.layers.get_order(self.doc.layers)
-        self.doc.do(anicommand.SortLayers(self.doc, order))
+        self.doc.do(anicommand.SortLayers(self.doc))
 
     def remove_frame(self):
         frame = self.frames.get_selected()
         self.doc.do(anicommand.RemoveFrame(self.doc, frame))
-        order = self.layers.get_order(self.doc.layers)
-        self.doc.do(anicommand.SortLayers(self.doc, order))
+        self.doc.do(anicommand.SortLayers(self.doc))
 
     def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
@@ -435,13 +430,11 @@ class Animation(object):
 
     def add_layer(self):
         self.doc.do(anicommand.InsertLayer(self.doc))
-        order = self.layers.get_order(self.doc.layers)
-        self.doc.do(anicommand.SortLayers(self.doc, order))
+        self.doc.do(anicommand.SortLayers(self.doc))
 
     def remove_layer(self):
         self.doc.do(anicommand.RemoveLayer(self.doc))
-        order = self.layers.get_order(self.doc.layers)
-        self.doc.do(anicommand.SortLayers(self.doc, order))
+        self.doc.do(anicommand.SortLayers(self.doc))
 
 
     def change_opacityfactor(self, opacityfactor):
