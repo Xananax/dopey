@@ -271,23 +271,25 @@ class Animation(object):
 
     def hide_all_frames(self):
         cels = []
-        for cel in self.frames.get_all_cels():
-            cel.visible = False
-            self._notify_canvas_observers(cel)
+        for layer in self.layers:
+            for cel in layer.get_all_cels():
+                cel.visible = False
+                self._notify_canvas_observers(cel)
 
     def change_visible_frame(self, prev_idx, cur_idx):
-        prev_cel = self.frames.cel_at(prev_idx)
-        cur_cel = self.frames.cel_at(cur_idx)
-        if prev_cel == cur_cel:
-            return
-        if prev_cel != None:
-            prev_cel.visible = False
-            self._notify_canvas_observers(prev_cel)
-        if cur_cel == None:
-            return
-        cur_cel.opacity = 1
-        cur_cel.visible = True
-        self._notify_canvas_observers(cur_cel)
+        for frames in self.layers:
+            prev_cel = frames.cel_at(prev_idx)
+            cur_cel = frames.cel_at(cur_idx)
+            if prev_cel == cur_cel:
+                continue
+            if prev_cel != None:
+                prev_cel.visible = False
+                self._notify_canvas_observers(prev_cel)
+            if cur_cel == None:
+                continue
+            cur_cel.opacity = 1
+            cur_cel.visible = True
+            self._notify_canvas_observers(cur_cel)
 
     def update_opacities(self):
         opacities, visible = self.layers.get_opacities()
@@ -331,7 +333,8 @@ class Animation(object):
         if self.frames.has_next():
             self.frames.goto_next()
         else:
-            self.frames.select(0)
+            for layer in self.layers:
+                layer.select(0)
         if use_lightbox:
             self.update_opacities()
         else:
