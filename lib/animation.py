@@ -138,6 +138,8 @@ class Animation(object):
                     self.layers[j][i].description = d['description']
                     self.layers[j][i].cel = cel
 
+            self.frames = self.layers[0]
+
         else:
             # load in legacy style
             print 'Loading using old format'
