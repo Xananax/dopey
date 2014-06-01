@@ -64,7 +64,7 @@ class FrameList(list):
     The list of frames that constitutes an animation.
 
     """
-    def __init__(self, length, doc=None, opacities=None, active_cels=None, nextprev=None):
+    def __init__(self, length, doc=None, opacities=None, active_cels=None, nextprev=None, init=False):
         self.append_frames(length)
         self.idx = 0
         if opacities is None:
@@ -80,19 +80,19 @@ class FrameList(list):
         self.setup_active_cels(active_cels)
         self.setup_nextprev(nextprev)
         if doc is not None:
-            self.setup_init_frame(doc)
+            self.setup_init_frame(doc, init)
 
-    def setup_init_frame(self, doc):
-        layer = Layer(name="(1) CEL 1")
-        layer.content_observers.append(doc.layer_modified_cb)
-        layer.set_symmetry_axis(doc.get_symmetry_axis())
-        doc.layers.insert(0, layer)
+    def setup_init_frame(self, doc, init):
+        name = "<A> CEL 1"
+        if init and len(doc.layers) > 0:
+            layer = doc.layers[-1]
+            doc.layers[-1].name = name
+        else:
+            layer = Layer(name=name)
+            layer.content_observers.append(doc.layer_modified_cb)
+            layer.set_symmetry_axis(doc.get_symmetry_axis())
+            doc.layers.insert(0, layer)
         self[0].add_cel(layer)
-        if len(doc.layers) > 1:
-            doc.select_layer(len(doc.layers)-1)
-            doc.remove_layer()
-            doc.ani.frames = self
-            doc.ani.update_opacities()
         doc.call_doc_observers()
 
     def setup_opacities(self, opacities):

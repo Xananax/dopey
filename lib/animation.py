@@ -143,7 +143,7 @@ class Animation(object):
             # load in legacy style
             print 'Loading using old format'
             self.using_legacy = True
-            self.frames = FrameList(len(data), None, self.opacities)
+            self.frames = FrameList(len(data), None, self.opacities, init=True)
             self.cleared = True
             for i, d in enumerate(data):
                 is_key, description, layer_idx = d
@@ -394,7 +394,7 @@ class Animation(object):
         if frame.cel is not None:
             return
         self.doc.do(anicommand.AddCel(self.doc, frame, self.frames.idx))
-        self.doc.do(anicommand.SortLayers(self.doc))
+#        self.doc.do(anicommand.SortLayers(self.doc))
 
     def remove_cel(self):
         frame = self.frames.get_selected()
@@ -404,12 +404,12 @@ class Animation(object):
 
     def insert_frames(self, ammount=1):
         self.doc.do(anicommand.InsertFrames(self.doc, ammount))
-        self.doc.do(anicommand.SortLayers(self.doc))
+#        self.doc.do(anicommand.SortLayers(self.doc))
 
     def remove_frame(self):
         frame = self.frames.get_selected()
         self.doc.do(anicommand.RemoveFrame(self.doc, frame))
-        self.doc.do(anicommand.SortLayers(self.doc))
+#        self.doc.do(anicommand.SortLayers(self.doc))
 
     def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
@@ -430,10 +430,11 @@ class Animation(object):
 
     def add_layer(self):
         self.doc.do(anicommand.InsertLayer(self.doc))
-        self.doc.do(anicommand.SortLayers(self.doc))
 
     def remove_layer(self):
         self.doc.do(anicommand.RemoveLayer(self.doc))
+
+    def sort_layers(self):
         self.doc.do(anicommand.SortLayers(self.doc))
 
 

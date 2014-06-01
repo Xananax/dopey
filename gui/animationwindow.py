@@ -162,6 +162,8 @@ class AnimationTool (gtk.VBox):
 
         # layers controls:
 
+        self.app.doc.model.doc_observers.insert(0, self.sort_layers)
+
         self.add_layer_button = stock_button(gtk.STOCK_ADD)
         self.add_layer_button.connect('clicked', self.on_add_layer)
         self.add_layer_button.set_tooltip_text(_('Add layer'))
@@ -478,6 +480,9 @@ class AnimationTool (gtk.VBox):
 
     def on_remove_layer(self, button):
         self.ani.remove_layer()
+
+    def sort_layers(self, doc=None):
+        self.ani.sort_layers()
 
     
     def _get_row_class(self, model, it):

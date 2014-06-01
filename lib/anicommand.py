@@ -11,7 +11,13 @@ import layer
 from gettext import gettext as _
 
 def layername_from_description(idx, lidx, description):
-    layername = "(" + str(lidx + 1) + ") CEL " + str(idx + 1)
+    letter = ""
+    for i in range(lidx // 26 + 1)[::-1]:
+        n = lidx // (26 ** i)
+        if i == 0: n += 1
+        letter += chr(n+64)
+        lidx -= 26 ** i
+    layername = "<" + letter + "> CEL " + str(idx + 1)
     if description != '':
         layername += ": " + description
     return layername
@@ -19,6 +25,7 @@ def layername_from_description(idx, lidx, description):
 
 class SelectFrame(Action):
     display_name = _("Select frame")
+    automatic_undo = True
     def __init__(self, doc, idx):
         self.doc = doc
         self.frames = doc.ani.frames
@@ -41,7 +48,6 @@ class SelectFrame(Action):
     def undo(self):
         if self.prev_layer_idx is not None:
             self.doc.layer_idx = self.prev_layer_idx
-        
         self.frames.select(self.prev_frame_idx)
         self.doc.ani.update_opacities()
         self._notify_document_observers()
@@ -296,13 +302,18 @@ class InsertLayer(Action):
     def redo(self):
         self.layers.insert_layer(self.doc)
         self.doc.ani.frames = self.layers.get_selected_layer()
-        self.doc.ani.cleared = True
         self._notify_document_observers()
 
     def undo(self):
-        self.frames.remove_layer()
+        framelist = self.layers.get_selected_layer()
+        for c in framelist.get_all_cels():
+            self.doc.layers.remove(c)
+        self.layers.remove_layer()
+        if self.layers.idx == len(self.layers):
+            self.layers.idx -= 1
+        if self.doc.layer_idx == len(self.doc.layers):
+            self.doc.layer_idx -= 1
         self.doc.ani.frames = self.layers.get_selected_layer()
-        self.doc.ani.cleared = True
         self._notify_document_observers()
 
 
@@ -311,25 +322,21 @@ class RemoveLayer(Action):
     def __init__(self, doc):
         self.doc = doc
         self.layers = doc.ani.layers
-        self.frames = doc.ani.frames
+        self.frames = self.layers.get_selected_layer()
         self.prev_idx = None
-        self.removed_frame = True
         
     def redo(self):
-        for f in self.frames:
-            if f.cel:
-                self.doc.layers.remove(f.cel)
-                f.remove_cel()
+        self.removed_layer = self.layers.remove_layer()
+        for c in self.frames.get_all_cels():
+            self.doc.layers.remove(c)
         self.prev_idx = self.doc.layer_idx
         self.doc.layer_idx = 0
 
-        self.layers.remove_layer()
         if len(self.layers) == 0:
             self.layers.append_layer(24, self.doc)
-            self.doc.ani.frames = self.layers.get_selected_layer()
             self.doc.layer_idx = 0
         else:
-            if self.layers.idx == len(self.doc.layers):
+            if self.layers.idx == len(self.layers):
                 self.layers.idx -= 1
 
         self.doc.ani.frames = self.layers.get_selected_layer()
@@ -338,27 +345,24 @@ class RemoveLayer(Action):
         self._notify_document_observers()
             
     def undo(self):
-        if not self.removed_frame:
-            self.frame.add_cel(self.layer)
-        else:
-            self.frames.insert_frames([self.frame])
-        if self.frame.cel:
-            self.doc.layers.append(self.frame.cel)
-            self.doc.layer_idx = self.prev_idx
-            self._notify_canvas_observers([self.frame.cel])
+        self.layers.insert_layer(self.doc, self.removed_layer)
         self.doc.ani.frames = self.layers.get_selected_layer()
+        self.doc.layer_idx = self.prev_idx
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
+
 class SortLayers(Action):
     display_name = _("Reorder Layer Stack")
+    automatic_undo = True
     def __init__(self, doc):
         self.doc = doc
         self.anilayers = self.doc.ani.layers
         self.new_order = self.anilayers.get_order(self.doc.layers)
         self.old_order = doc.layers[:]
         self.selection = self.old_order[doc.layer_idx]
+
     def redo(self):
         self.old_names = []
         for l in self.doc.layers:
@@ -370,12 +374,20 @@ class SortLayers(Action):
                 if self.anilayers[l][f].has_cel():
                     new_name = layername_from_description(f, l, self.anilayers[l][f].description)
                     self.anilayers[l][f].cel.name = new_name
-        self._notify_canvas_observers(self.doc.layers)
-        self._notify_document_observers()
+        layer = self.anilayers.get_selected_layer()
+        cel = layer.cel_at(layer.idx)
+        if cel is not None:
+            # Select the corresponding layer:
+            layer_idx = self.doc.layers.index(cel)
+            self.prev_layer_idx = self.doc.layer_idx
+            self.doc.layer_idx = layer_idx
+        self.doc.ani.update_opacities()
+
+
+
+
     def undo(self):
         self.doc.layers[:] = self.old_order
         self.doc.layer_idx = self.doc.layers.index(self.selection)
         for i in range(len(self.doc.layers)):
             self.doc.layers[i].name = self.old_names[i]
-        self._notify_canvas_observers(self.doc.layers)
-        self._notify_document_observers()
