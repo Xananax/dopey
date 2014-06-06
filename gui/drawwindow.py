@@ -895,32 +895,30 @@ class DrawWindow (gtk.Window):
 
     def previous_frame_cb(self, action):
         ani = self.app.doc.ani.model   # this is not set yet in __init__
-        if ani.frames.has_previous():
-            ani.previous_frame()
+        ani.previous_frame()
 
     def next_frame_cb(self, action):
         ani = self.app.doc.ani.model
-        if ani.frames.has_next():
-            ani.next_frame()
+        ani.next_frame()
 
     def previous_celframe_cb(self, action):
         ani = self.app.doc.ani.model
-        if ani.frames.has_previous(with_cel=True):
+        if ani.timeline.has_previous(with_cel=True):
             ani.previous_frame(with_cel=True)
 
     def next_celframe_cb(self, action):
         ani = self.app.doc.ani.model
-        if ani.frames.has_next(with_cel=True):
+        if ani.timeline.has_next(with_cel=True):
             ani.next_frame(with_cel=True)
 
     def previous_keyframe_cb(self, action):
         ani = self.app.doc.ani.model
-        if ani.frames.has_previous_key():
+        if ani.timeline.has_previous_key():
             ani.previous_keyframe()
 
     def next_keyframe_cb(self, action):
         ani = self.app.doc.ani.model
-        if ani.frames.has_next_key():
+        if ani.timeline.has_next_key():
             ani.next_keyframe()
 
     def add_cel_cb(self, action):

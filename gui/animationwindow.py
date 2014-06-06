@@ -16,7 +16,7 @@ import dialogs
 import anidialogs
 from layerswindow import stock_button
 
-from lib.framelist import DEFAULT_ACTIVE_CELS
+from lib.timeline import DEFAULT_ACTIVE_CELS
 
 COLUMNS_NAME = ('frame_index', 'frame_data')
 COLUMNS_ID = dict((name, i) for i, name in enumerate(COLUMNS_NAME))
@@ -289,7 +289,7 @@ class AnimationTool (gtk.VBox):
         self.app.doc.model.doc_observers.append(self.update)
 
     def _get_path_from_frame(self, frame):
-        return (self.ani.frames.idx, )
+        return (self.ani.timeline.idx - self.ani.timeline.layer.get_first(), )
 
     def setup_lightbox(self):
         active_cels = {}
@@ -297,7 +297,7 @@ class AnimationTool (gtk.VBox):
             pref = "lightbox.%s" % (attr,)
             default = DEFAULT_ACTIVE_CELS[attr]
             active_cels[attr] = self.app.preferences.get(pref, default)
-        self.ani.frames.setup_active_cels(active_cels)
+        self.ani.timeline.setup_active_cels(active_cels)
 
     def setup(self):
         treesel = self.treeview.get_selection()
@@ -307,8 +307,8 @@ class AnimationTool (gtk.VBox):
         self.treeview.set_model(None)
 
         self.listmodel.clear()
-        xsheet_list = list(enumerate(self.ani.frames))
-        for i, frame in xsheet_list:
+        xsheet_list = self.ani.timeline.get_list()
+        for i, frame, in xsheet_list:
             self.listmodel.append((i, frame))
 
         column = self.treeview.get_column(0)
@@ -324,8 +324,6 @@ class AnimationTool (gtk.VBox):
         # reconnect treeview:
         self.treeview.set_model(self.listmodel)
 
-        treesel.handler_unblock(self.changed_handler)
-
 
         self.on_opacityfactor_changed()
         self.setup_lightbox()
@@ -335,7 +333,7 @@ class AnimationTool (gtk.VBox):
             self.setup()
             self.ani.cleared = False
 
-        frame = self.ani.frames.get_selected()
+        frame = self.ani.timeline.get_selected()
         path = self._get_path_from_frame(frame)
         self.treeview.get_selection().select_path(path)
         self.treeview.scroll_to_cell(path)
@@ -351,7 +349,7 @@ class AnimationTool (gtk.VBox):
         return self._update()
 
     def create_list(self):
-        xsheet_list = list(enumerate(self.ani.frames))
+        xsheet_list = self.ani.timeline.get_list()
         listmodel = gtk.ListStore(int, object)
         for i, frame in xsheet_list:
             listmodel.append((i, frame))
@@ -359,7 +357,7 @@ class AnimationTool (gtk.VBox):
 
     def create_layer_list(self):
         layerlist = gtk.ListStore(object)
-        for frame in self.ani.frames:
+        for frame in self.ani.timeline.layer:
             layerlist.append([str(frame)])
         return layerlist
     
@@ -409,16 +407,13 @@ class AnimationTool (gtk.VBox):
         self.stop_button.set_sensitive(self.is_playing)
 
     def _update_buttons_sensitive(self):
-        self.previous_button.set_sensitive(self.ani.frames.has_previous())
-        self.next_button.set_sensitive(self.ani.frames.has_next())
-        self.previous_layer_button.set_sensitive(self.ani.layers.has_previous())
-        self.next_layer_button.set_sensitive(self.ani.layers.has_next())
+        self.previous_layer_button.set_sensitive(self.ani.timeline.has_previous_layer())
+        self.next_layer_button.set_sensitive(self.ani.timeline.has_next_layer())
         self.cut_button.set_sensitive(self.ani.can_cutcopy())
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
-        self.remove_cel_button.set_sensitive(bool(self.ani.frames.idx))
         
-        f = self.ani.frames.get_selected()
+        f = self.ani.timeline.get_selected()
         if f.cel is None:
             self.add_cel_button.show()
             self.remove_cel_button.hide()
@@ -432,6 +427,7 @@ class AnimationTool (gtk.VBox):
     def on_row_changed(self, treesel):
         model, it = treesel.get_selected()
         frame_idx = model.get_value(it, COLUMNS_ID['frame_index'])
+        frame_idx += self.ani.timeline.layer.get_first()
         self.ani.select(frame_idx)
         self._update_buttons_sensitive()
     
@@ -496,10 +492,21 @@ class AnimationTool (gtk.VBox):
         
     def set_description(self, column, cell, model, it, data):
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
+        if frame is None:
+            cell.set_property('text', '')
+            return
         cell.set_property('text', frame.description)
         
     def set_icon(self, column, cell, model, it, data):
         frame = model.get_value(it, COLUMNS_ID['frame_data'])
+        small_icons = self.app.preferences.get("xsheet.small_icons", False)
+        if frame is None:
+            pixname = 'frame'
+            if small_icons:
+                pixname += '_small'
+            pixbuf = getattr(self.app.pixmaps, pixname)
+            cell.set_property('pixbuf', pixbuf)
+            return
         pixname = 'frame'
         if frame.cel is not None:
             pixname += '_cel'
@@ -507,7 +514,6 @@ class AnimationTool (gtk.VBox):
                 pixname += '_onion'
         if frame.is_key:
             pixname = 'key' + pixname
-        small_icons = self.app.preferences.get("xsheet.small_icons", False)
         if small_icons:
             pixname += '_small'
         pixbuf = getattr(self.app.pixmaps, pixname)
@@ -533,9 +539,9 @@ class AnimationTool (gtk.VBox):
 
     def _play_animation(self, from_first_frame=True, use_lightbox=False):
         self.is_playing = True
-        self.beforeplay_frame = self.ani.frames.idx
+        self.beforeplay_frame = self.ani.timeline.idx
         if from_first_frame:
-            self.ani.frames.select(0)
+            self.ani.timeline.select(self.ani.timeline.get_first())
         self._change_player_buttons()
         self.ani.hide_all_frames()
         # animation timer

@@ -66,7 +66,6 @@ class FrameList(list):
     """
     def __init__(self, length, doc=None, opacities=None, active_cels=None, nextprev=None, init=False):
         self.append_frames(length)
-        self.idx = 0
         if opacities is None:
             opacities = {}
         self.opacities = dict(DEFAULT_OPACITIES)
@@ -79,20 +78,14 @@ class FrameList(list):
         self.setup_opacities(opacities)
         self.setup_active_cels(active_cels)
         self.setup_nextprev(nextprev)
-        if doc is not None:
-            self.setup_init_frame(doc, init)
+        if init:
+            self.setup_init_frame(doc)
 
-    def setup_init_frame(self, doc, init):
+    def setup_init_frame(self, doc):
         name = "<A> CEL 1"
-        if init and len(doc.layers) > 0:
-            layer = doc.layers[-1]
-            doc.layers[-1].name = name
-        else:
-            layer = Layer(name=name)
-            layer.content_observers.append(doc.layer_modified_cb)
-            layer.set_symmetry_axis(doc.get_symmetry_axis())
-            doc.layers.insert(0, layer)
-        self[0].add_cel(layer)
+        cel = doc.layers[-1]
+        cel.name = name
+        self[0].add_cel(cel)
         doc.call_doc_observers()
 
     def setup_opacities(self, opacities):
@@ -116,18 +109,6 @@ class FrameList(list):
     def append_frames(self, length):
         for l in range(length):
             self.append(Frame())
-
-    def frames_to_remove(self, length, at_end=False):
-        """
-        Return the frames to remove if the same arguments of
-        remove_frames are passed.
-
-        """
-        if at_end:
-            idx = len(self) - 1
-        else:
-            idx = self.idx
-        return list(self[self.idx:self.idx+length])
 
     def remove_frames(self, length, at_end=False):
         """
@@ -697,7 +678,7 @@ Inserting frames
 >>> frames.cel_at(4)
 'c'
 
->>> frames.idx
+>>> timeline.idx
 2
 
 >>> rem = frames.frames_to_remove(2)
@@ -724,14 +705,14 @@ True
 >>> len(frames)
 6
 
->>> frames.idx = 5 # at the end
+>>> timeline.idx = 5 # at the end
 >>> rem3 = frames.remove_frames(1)
 >>> len(rem3)
 1
 
 >>> len(frames)
 5
->>> frames.idx
+>>> timeline.idx
 4
 
 >>> rem4 = frames.remove_frames(2)
@@ -740,7 +721,7 @@ True
 
 >>> len(frames)
 4
->>> frames.idx
+>>> timeline.idx
 3
 
 Count cels occurrencies

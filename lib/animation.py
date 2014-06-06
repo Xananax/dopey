@@ -17,7 +17,7 @@ from subprocess import call
 import pixbufsurface
 
 import anicommand
-from anilayers import AnimationLayerList
+from timeline import TimeLine
 from xdna import XDNA
 
 
@@ -33,8 +33,7 @@ class Animation(object):
     
     def __init__(self, doc):
         self.doc = doc
-        self.frames = None
-        self.layers = None
+        self.timeline = None
         self.framerate = 24.0
         self.cleared = False
         self.using_legacy = False
@@ -48,9 +47,8 @@ class Animation(object):
         self.edit_frame = None
 
     def clear_xsheet(self, doc, init=False):
-        self.layers = AnimationLayerList()
-        self.layers.append_layer(24, doc, self.opacities)
-        self.frames = self.layers[0]
+        self.timeline = TimeLine(self.opacities)
+        self.timeline.append_layer()
         self.cleared = True
     
     def legacy_xsheet_as_str(self):
@@ -84,8 +82,8 @@ class Animation(object):
             }
         }
 
-        for i in range(len(self.layers)):
-            for f in self.layers[i]:
+        for i in range(len(self.timeline)):
+            for f in self.timeline[i]:
                 if f.cel is not None:
                     layer_idx = self.doc.layers.index(f.cel)
                 else:
@@ -116,32 +114,31 @@ class Animation(object):
         data = json.loads(ani_data)
 
         # first check if it's in the legacy non-descriptive JSON or new XDNA format
+        #if current (revision 2)???  type(blargle) == TimeLine? data['xsheet']['timeline']?
         if type(data) is dict and data['XDNA']:
-            print 'Loading using new file format'
+            print 'Loading using revision 1 file format'
             x = self.xdna
 
             raster_frames = data['xsheet']['raster_frame_lists']
 
-            self.layers = AnimationLayerList()
+            self.timeline = TimeLine(self.opacities)
             self.framerate = data['xsheet']['framerate']
             self.cleared = True
 
             for j in range(len(raster_frames)):
-                self.layers.append_layer(len(raster_frames[j]), self.opacities)
+                self.timeline.append_layer()
                 for i, d in enumerate(raster_frames[j]):
                     if d['idx'] is not None:
                         cel = self.doc.layers[d['idx']]
                     else:
                         cel = None
-                    self.layers[j][i].is_key = d['is_key']
-                    self.layers[j][i].description = d['description']
-                    self.layers[j][i].cel = cel
-
-            self.frames = self.layers[0]
+                    self.timeline[j][i].is_key = d['is_key']
+                    self.timeline[j][i].description = d['description']
+                    self.timeline[j][i].cel = cel
 
         else:
             # load in legacy style
-            print 'Loading using old format'
+            print 'Loading using legacy file format'
             self.using_legacy = True
             self.frames = FrameList(len(data), None, self.opacities, init=True)
             self.cleared = True
@@ -188,14 +185,14 @@ class Animation(object):
         doc_bbox = self.doc.get_effective_bbox()
         
         length = 0
-        for i in range(len(self.layers)):
-            if len(self.layers[i]) > length:
-                length = len(self.layers[i])
+        for i in range(len(self.timeline)):
+            if len(self.timeline[i]) > length:
+                length = len(self.timeline[i])
 
         for i in range(length):
             frame = Layer()
-            for j in range(len(self.layers)):
-                cel = self.layers[j].cel_at(i)
+            for j in range(len(self.timeline)):
+                cel = self.timeline[j].cel_at(i)
                 visible, opacity = cel.visible, cel.opacity
                 cel.visible, cel.opacity = True, 1.0
                 cel.merge_into(frame)
@@ -287,29 +284,30 @@ class Animation(object):
             f(*bbox)
 
     def hide_all_frames(self):
-        cels = []
-        for layer in self.layers:
-            for cel in layer.get_all_cels():
-                cel.visible = False
-                self._notify_canvas_observers(cel)
+        for cel in self.timeline.get_all_cels():
+            cel.visible = False
+            self._notify_canvas_observers(cel)
 
     def change_visible_frame(self, prev_idx, cur_idx):
-        for frames in self.layers:
-            prev_cel = frames.cel_at(prev_idx)
-            cur_cel = frames.cel_at(cur_idx)
-            if prev_cel == cur_cel:
+        prev_cels = self.timeline.cels_at(prev_idx)
+        cur_cels = self.timeline.cels_at(cur_idx)
+        if prev_cels == cur_cels: return
+        for cel in prev_cels:
+            if cel in cur_cels:
                 continue
-            if prev_cel != None:
-                prev_cel.visible = False
-                self._notify_canvas_observers(prev_cel)
-            if cur_cel == None:
+            if cel != None:
+                cel.visible = False
+                self._notify_canvas_observers(cel)
+        for cel in cur_cels:
+            if cel in prev_cels:
                 continue
-            cur_cel.opacity = 1
-            cur_cel.visible = True
-            self._notify_canvas_observers(cur_cel)
+            if cel != None:
+                cel.opacity = 1
+                cel.visible = True
+                self._notify_canvas_observers(cel)
 
     def update_opacities(self):
-        opacities, visible = self.layers.get_opacities()
+        opacities, visible = self.timeline.get_opacities()
 
         for cel, opa in opacities.items():
             if cel is None:
@@ -323,9 +321,25 @@ class Animation(object):
             cel.visible = vis
             self._notify_canvas_observers(cel)
 
+    def generate_layername(self, idx, l_idx, description):
+        letter = ""
+        try:
+            digits = int(math.log(l_idx, 26) + 1)
+        except:
+            digits = 1
+        for i in range(digits)[::-1]:
+            n = l_idx // (26 ** i)
+            if i == 0: n += 1
+            letter += chr(n+64)
+            l_idx -= (26 ** i) * n
+        layername = "<" + letter + "> CEL " + str(idx + 1)
+        if description != '':
+            layername += ": " + description
+        return layername
+
     def select_without_undo(self, idx):
         """Like the command but without undo/redo."""
-        self.frames.select(idx)
+        self.timeline.select(idx)
         self.update_opacities()
 
     def play_animation(self):
@@ -346,84 +360,82 @@ class Animation(object):
         self.player_state = "stop"
 
     def player_next(self, use_lightbox=False):
-        prev_idx = self.frames.idx
-        if self.frames.has_next():
-            self.frames.goto_next()
+        prev_idx = self.timeline.idx
+        if self.timeline.has_next():
+            self.timeline.goto_next()
         else:
-            for layer in self.layers:
-                layer.select(0)
+            self.timeline.select(self.timeline.get_first())
         if use_lightbox:
             self.update_opacities()
         else:
-            self.change_visible_frame(prev_idx, self.frames.idx)
+            self.change_visible_frame(prev_idx, self.timeline.idx)
 
     def toggle_key(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         self.doc.do(anicommand.ToggleKey(self.doc, frame))
 
     def toggle_skip_visible(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         self.doc.do(anicommand.ToggleSkipVisible(self.doc, frame))
 
     def previous_frame(self, with_cel=False):
-        self.frames.goto_previous(with_cel)
+        new = self.timeline.goto_previous(with_cel)
         self.update_opacities()
+        if new: self.cleared = True
         self.doc.call_doc_observers()
 
     def next_frame(self, with_cel=False):
-        self.frames.goto_next(with_cel)
+        new = self.timeline.goto_next(with_cel)
         self.update_opacities()
+        if new: self.cleared = True
         self.doc.call_doc_observers()
 
     def previous_keyframe(self):
-        self.frames.goto_previous_key()
+        new = self.timeline.goto_previous_key()
         self.update_opacities()
+        if new: self.cleared = True
         self.doc.call_doc_observers()
 
     def next_keyframe(self):
-        self.frames.goto_next_key()
+        new = self.timeline.goto_next_key()
         self.update_opacities()
+        if new: self.cleared = True
         self.doc.call_doc_observers()
     
     def change_description(self, new_description):
-        frame = self.frames.get_selected()
-        self.doc.do(anicommand.ChangeDescription(self.doc, frame, self.frames.idx, new_description))
+        frame = self.timeline.get_selected()
+        self.doc.do(anicommand.ChangeDescription(self.doc, frame, self.timeline.layer_idx, self.timeline.idx, new_description))
     
     def add_cel(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         if frame.cel is not None:
             return
-        self.doc.do(anicommand.AddCel(self.doc, frame, self.frames.idx))
-#        self.doc.do(anicommand.SortLayers(self.doc))
+        self.doc.do(anicommand.AddCel(self.doc, frame, self.timeline.idx))
 
     def remove_cel(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         if frame.cel is None:
             return
         self.doc.do(anicommand.RemoveCel(self.doc, frame))
 
-    def insert_frames(self, ammount=1):
-        self.doc.do(anicommand.InsertFrames(self.doc, ammount))
-#        self.doc.do(anicommand.SortLayers(self.doc))
+    def insert_frames(self, amount=1):
+        self.doc.do(anicommand.InsertFrames(self.doc, amount))
 
     def remove_frame(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         self.doc.do(anicommand.RemoveFrame(self.doc, frame))
-#        self.doc.do(anicommand.SortLayers(self.doc))
 
     def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
 
     def previous_layer(self):
-        self.layers.goto_previous_layer()
-        self.frames = self.layers.get_selected_layer()
+        self.timeline.goto_previous_layer()
         self.update_opacities()
         self.cleared = True
         self.doc.call_doc_observers()
 
     def next_layer(self):
-        self.layers.goto_next_layer()
-        self.frames = self.layers.get_selected_layer()
+        self.timeline.goto_next_layer()
         self.update_opacities()
         self.cleared = True
         self.doc.call_doc_observers()
@@ -435,37 +447,50 @@ class Animation(object):
         self.doc.do(anicommand.RemoveLayer(self.doc))
 
     def sort_layers(self):
-        self.doc.do(anicommand.SortLayers(self.doc))
+        new_order = self.timeline.get_order(self.doc.layers)
+        selection = self.doc.layers[self.doc.layer_idx]
+        self.doc.layers = new_order[:]
+        self.doc.layer_idx = self.doc.layers.index(selection)
+        for l in range(len(self.timeline)):
+            for f in self.timeline[l]:
+                if self.timeline[l][f].has_cel():
+                    new_name = self.generate_layername(f, l, self.timeline[l][f].description)
+                    self.timeline[l][f].cel.name = new_name
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        if cel is not None:
+            # Select the corresponding layer:
+            self.doc.layer_idx = self.doc.layers.index(cel)
+        self.update_opacities()
 
 
     def change_opacityfactor(self, opacityfactor):
-        self.frames.set_opacityfactor(opacityfactor)
+        self.timeline.set_opacityfactor(opacityfactor)
         self.update_opacities()
 
     def toggle_opacity(self, attr, is_active):
-        self.frames.setup_active_cels({attr: is_active})
+        self.timeline.setup_active_cels({attr: is_active})
         self.update_opacities()
     
     def toggle_nextprev(self, nextprev, is_active):
-        self.frames.setup_nextprev({nextprev: is_active})
+        self.timeline.setup_nextprev({nextprev: is_active})
         self.update_opacities()
     
     def can_cutcopy(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         return frame.cel is not None
 
     def cutcopy_cel(self, edit_operation):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         self.doc.ani.edit_operation = edit_operation
         self.doc.ani.edit_frame = frame
         self.doc.call_doc_observers()
 
     def can_paste(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         return self.edit_frame is not None and \
             self.edit_frame != frame and \
             frame.cel == None
 
     def paste_cel(self):
-        frame = self.frames.get_selected()
+        frame = self.timeline.get_selected()
         self.doc.do(anicommand.PasteCel(self.doc, frame))
