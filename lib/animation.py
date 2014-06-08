@@ -54,10 +54,12 @@ class Animation(object):
     def legacy_xsheet_as_str(self):
         """
         Return animation X-Sheet as data in json format.
+        (only saves first layer! (if it works? i dont even know. it should))
 
         """
         data = []
-        for f in self.frames:
+        for nf in self.timeline.layer:
+            f = self.timeline.layer[nf]
             if f.cel is not None:
                 layer_idx = self.doc.layers.index(f.cel)
             else:
@@ -66,7 +68,7 @@ class Animation(object):
         str_data = json.dumps(data, sort_keys=True, indent=4)
         return str_data
 
-    def xsheet_as_str(self):
+    def rev1_xsheet_as_str(self):
         """
         Return animation X-Sheet as data in XDNA format.
 
@@ -78,21 +80,70 @@ class Animation(object):
             'XDNA': x.xdna_signature,
             'xsheet': {
                 'framerate': self.framerate,
-                'raster_frame_lists': [[]]
+                'raster_frame_lists': []
             }
         }
 
-        for i in range(len(self.timeline)):
-            for f in self.timeline[i]:
+        for l, layer in enumerate(self.timeline):
+            data['xsheet']['raster_frame_lists'].append([])
+            for nf in range(len(layer)):
+                if nf in layer:
+                    f = layer[nf]
+                    if f.cel is not None:
+                        layer_idx = self.doc.layers.index(f.cel)
+                    else:
+                        layer_idx = None
+                    data['xsheet']['raster_frame_lists'][l].append({
+                        'idx': layer_idx,
+                        'is_key': f.is_key,
+                        'description': f.description
+                    })
+                else:
+                    data['xsheet']['raster_frame_lists'][l].append({
+                        'idx': None,
+                        'is_key': False,
+                        'description': ''
+                    })
+
+        str_data = json.dumps(data, sort_keys=True, indent=4)
+        return str_data
+
+    def xsheet_as_str(self):
+        """
+        Return animation X-Sheet as data in newer XDNA format.
+
+        """
+        x = self.xdna
+
+        data = {
+            'metadata': x.application_signature,
+            'XDNA': x.xdna_signature,
+            'xsheet': {
+                'framerate': self.framerate,
+                'raster_frame_lists': []
+            }
+        }
+
+        self.timeline.cleanup()
+        for l, layer in enumerate(self.timeline):
+            data['xsheet']['raster_frame_lists'].append({
+                'description': layer.description,
+                'visible': layer.visible,
+                'opacity': layer.opacity,
+                'locked': layer.locked,
+                'composite': layer.composite,
+            })
+            for nf in layer:
+                f = layer[nf]
                 if f.cel is not None:
                     layer_idx = self.doc.layers.index(f.cel)
                 else:
                     layer_idx = None
-                data['xsheet']['raster_frame_lists'][i].append({
+                data['xsheet']['raster_frame_lists'][l][nf] = {
                     'idx': layer_idx,
                     'is_key': f.is_key,
                     'description': f.description
-                })
+                }
 
         str_data = json.dumps(data, sort_keys=True, indent=4)
         return str_data
@@ -107,16 +158,14 @@ class Animation(object):
 
     def str_to_xsheet(self, doc, ani_data):
         """
-        Update FrameList from animation data.
+        Update TimeLine from animation data.
     
         """
 
         data = json.loads(ani_data)
 
         # first check if it's in the legacy non-descriptive JSON or new XDNA format
-        #if current (revision 2)???  type(blargle) == TimeLine? data['xsheet']['timeline']?
         if type(data) is dict and data['XDNA']:
-            print 'Loading using revision 1 file format'
             x = self.xdna
 
             raster_frames = data['xsheet']['raster_frame_lists']
@@ -125,22 +174,54 @@ class Animation(object):
             self.framerate = data['xsheet']['framerate']
             self.cleared = True
 
-            for j in range(len(raster_frames)):
-                self.timeline.append_layer()
-                for i, d in enumerate(raster_frames[j]):
-                    if d['idx'] is not None:
-                        cel = self.doc.layers[d['idx']]
-                    else:
-                        cel = None
-                    self.timeline[j][i].is_key = d['is_key']
-                    self.timeline[j][i].description = d['description']
-                    self.timeline[j][i].cel = cel
+
+            #check which version of the XDNA format is being used
+            if type(raster_frames[0]) is dict:
+                print 'Loading using current file format'
+                # load with current format (dictionaries)
+                for j in range(len(raster_frames)):
+                    self.timeline.append_layer()
+                    self.timeline[j].description = raster_frames[j]['description']
+                    self.timeline[j].visible = raster_frames[j]['visible']
+                    self.timeline[j].opacity = raster_frames[j]['opacity']
+                    self.timeline[j].locked = raster_frames[j]['locked']
+                    self.timeline[j].composite = raster_frames[j]['composite']
+                    for ui in raster_frames[j]:
+                        try:
+                            i = int(ui)
+                        except ValueError:
+                            continue
+                        d = raster_frames[j][ui]
+                        f = self.timeline[j][i]
+                        if d['idx'] is not None:
+                            cel = self.doc.layers[d['idx']]
+                        else:
+                            cel = None
+                        f.is_key = d['is_key']
+                        f.description = d['description']
+                        f.cel = cel
+                
+            else:
+                # load with revision 1 format (lists)
+                print 'Loading using revision 1 file format'
+                for j in range(len(raster_frames)):
+                    self.timeline.append_layer()
+                    for i, d in enumerate(raster_frames[j]):
+                        if d['idx'] is not None:
+                            cel = self.doc.layers[d['idx']]
+                        else:
+                            cel = None
+                        self.timeline[j][i].is_key = d['is_key']
+                        self.timeline[j][i].description = d['description']
+                        self.timeline[j][i].cel = cel
+                self.timeline.cleanup()
 
         else:
-            # load in legacy style
+            # load in legacy non-descriptive JSON style
             print 'Loading using legacy file format'
             self.using_legacy = True
-            self.frames = FrameList(len(data), None, self.opacities, init=True)
+            self.timeline = TimeLine(self.opacities)
+            self.timeline.append_layer()
             self.cleared = True
             for i, d in enumerate(data):
                 is_key, description, layer_idx = d
@@ -148,9 +229,10 @@ class Animation(object):
                     cel = self.doc.layers[layer_idx]
                 else:
                     cel = None
-                self.frames[i].is_key = is_key
-                self.frames[i].description = description
-                self.frames[i].cel = cel
+                self.timeline[0][i].is_key = is_key
+                self.timeline[0][i].description = description
+                self.timeline[0][i].cel = cel
+            self.timeline.cleanup()
 
     def _read_xsheet(self, doc, xsheetfile):
         """
@@ -183,13 +265,8 @@ class Animation(object):
         if l[-1].isdigit():
             prefix = l[0]
         doc_bbox = self.doc.get_effective_bbox()
-        
-        length = 0
-        for i in range(len(self.timeline)):
-            if len(self.timeline[i]) > length:
-                length = len(self.timeline[i])
 
-        for i in range(length):
+        for i in range(self.timeline.get_first(), self.timeline.get_last()+1):
             frame = Layer()
             for j in range(len(self.timeline)):
                 cel = self.timeline[j].cel_at(i)
@@ -449,13 +526,13 @@ class Animation(object):
     def sort_layers(self):
         new_order = self.timeline.get_order(self.doc.layers)
         selection = self.doc.layers[self.doc.layer_idx]
-        self.doc.layers = new_order[:]
+        if selection not in new_order: return
         self.doc.layer_idx = self.doc.layers.index(selection)
-        for l in range(len(self.timeline)):
-            for f in self.timeline[l]:
-                if self.timeline[l][f].has_cel():
-                    new_name = self.generate_layername(f, l, self.timeline[l][f].description)
-                    self.timeline[l][f].cel.name = new_name
+        for l, layer in enumerate(self.timeline):
+            for f in layer:
+                if layer[f].has_cel():
+                    new_name = self.generate_layername(f, l, layer[f].description)
+                    layer[f].cel.name = new_name
         cel = self.timeline.layer.cel_at(self.timeline.idx)
         if cel is not None:
             # Select the corresponding layer:

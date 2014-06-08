@@ -82,6 +82,10 @@ class FrameList(dict):
     """
     def __init__(self, description='Untitled layer', **kargs):
         self.description = description
+        self.visible = True
+        self.opacity = 1.0
+        self.locked = False
+        self.composite = 'svg:src-over'
         for k in kargs:
             self[k] = kargs[k]
 
@@ -105,7 +109,7 @@ class FrameList(dict):
         for k in key:
             if type(k) is int:
                 items.append(self.setdefault(k, Frame()))
-            else:
+            elif type(k) is slice:
                 start, stop, step = k.start, k.stop, k.step
                 if start is None:
                     start = self.get_first()
