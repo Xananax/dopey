@@ -244,6 +244,7 @@ class TimeLine(list):
     def __init__(self, opacities=None, active_cels=None, nextprev=None):
         self.idx = 0
         self.layer_idx = 0
+        self.fps = 24
         if opacities is None:
             opacities = {}
         self.opacities = dict(DEFAULT_OPACITIES)
@@ -298,15 +299,17 @@ class TimeLine(list):
             if la > last: last = la
         return last
 
-    def check(self):
-        self.layer[self.idx]
+    def get_length(self):
+        try:
+            return self.get_last() - self.get_first() + 1
+        except:
+            return 0
 
     def get_selected(self):
         return self[self.layer_idx][self.idx]
 
     def select(self, n):
         self.idx = n
-        self.check()
 
     def goto_next(self, with_cel=False):
         if with_cel:
@@ -317,11 +320,9 @@ class TimeLine(list):
             else:
                 new = not self.check_key(next_frame)
                 self.idx = next_frame
-                self.check()
                 return new
         new = not self.check_key(self.idx + 1)
         self.idx += 1
-        self.check()
         return new
 
     def goto_previous(self, with_cel=False):
@@ -333,11 +334,9 @@ class TimeLine(list):
             else:
                 new = not self.check_key(prev_frame)
                 self.idx = prev_frame
-                self.check()
                 return new
         new = not self.check_key(self.idx - 1)
         self.idx -= 1
-        self.check()
         return new
 
     def has_next(self, with_cel=False):
@@ -389,7 +388,6 @@ class TimeLine(list):
         else:
             new = not self.check_key(f)
             self.idx = f
-            self.check()
             return new
 
     def goto_previous_key(self):
@@ -399,7 +397,6 @@ class TimeLine(list):
         else:
             new = not self.check_key(f)
             self.idx = f
-            self.check()
             return new
 
     def has_next_key(self): 
@@ -489,11 +486,8 @@ class TimeLine(list):
         else:
             raise TypeError('append_layer() FrameList expected, got ' + str(type(layer)) + '.')
 
-    def remove_layer(self, at_end=False):
-        if at_end:
-            idx = len(self) - 1
-        else:
-            idx = self.layer_idx
+    def remove_layer(self, idx=None):
+        if idx is None: idx = self.layer_idx
         removed = self.pop(idx)
         if self.layer_idx > len(self) - 1:
             self.layer_idx = len(self) - 1
@@ -517,14 +511,12 @@ class TimeLine(list):
             print 'IndexError: Trying to go to next at the last layer.'
         else:
             self.layer_idx += 1
-            self.check()
 
     def goto_previous_layer(self):
         if not self.has_previous_layer():
             print 'IndexError: Trying to go to previous at the first layer.'
         else:
             self.layer_idx -= 1
-            self.check()
 
     def has_next_layer(self):
         if self.layer_idx == len(self)-1:

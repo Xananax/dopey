@@ -104,11 +104,11 @@ class ChangeDescription(Action):
 
 class AddCel(Action):
     display_name = _("Add cel")
-    def __init__(self, doc, frame, idx):
+    def __init__(self, doc, l_idx, idx):
         self.doc = doc
-        self.frame = frame
 	self.idx = idx
-        self.lidx = self.doc.ani.timeline.layer_idx
+        self.lidx = l_idx
+        self.frame = self.doc.ani.timeline[l_idx][idx]
 
         # Create new layer:
         layername = self.doc.ani.generate_layername(self.idx, self.lidx, self.frame.description)
@@ -136,19 +136,20 @@ class AddCel(Action):
 
 class InsertFrames(Action):
     display_name = _("Insert Frame")
-    def __init__(self, doc, length):
+    def __init__(self, doc, length, l_idx, idx):
         self.doc = doc
         self.timeline = doc.ani.timeline
-        self.idx = self.timeline.idx
+        self.idx = idx
+        self.layer = l_idx
         self.length = length
 
     def redo(self):
-        self.timeline.layer.insert_frames(self.idx, self.length)
+        self.timeline[self.layer].insert_frames(self.idx, self.length)
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
     def undo(self):
-        self.timeline.layer.remove_frames(self.idx, self.length)
+        self.timeline[self.layer].remove_frames(self.idx, self.length)
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
@@ -185,29 +186,30 @@ class RemoveCel(Action):
 
 class RemoveFrame(Action):
     display_name = _("Remove Frame")
-    def __init__(self, doc, frame):
+    def __init__(self, doc, frame, l_idx=None):
         self.doc = doc
         self.timeline = doc.ani.timeline
         self.frame = frame
         self.prev_idx = None
-        self.layer = None
+        self.layer = l_idx
+        
         
     def redo(self):
-        if self.frame.cel:
-            layer = self.frame.cel
+        if self.timeline[self.layer][self.frame].cel:
+            layer = self.timeline[self.layer][self.frame].cel
             self.doc.layers.remove(layer)
             self.prev_idx = self.doc.layer_idx
             self.doc.layer_idx = len(self.doc.layers) - 1
             self._notify_canvas_observers([layer])
 
-        self.timeline.layer.remove_frames(self.timeline.idx)
+        self.timeline[self.layer].remove_frames(self.layer)
         
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
         self._notify_document_observers()
             
     def undo(self):
-        self.frames.insert_frames([self.frame])
+        self.timeline[self.layer].insert_frames([self.frame])
         if self.frame.cel:
             self.doc.layers.append(self.frame.cel)
             self.doc.layer_idx = self.prev_idx
@@ -253,17 +255,18 @@ class PasteCel(Action):
 
 class InsertLayer(Action):
     display_name = _("Insert Layer")
-    def __init__(self, doc):
+    def __init__(self, doc, idx):
         self.doc = doc
         self.timeline = doc.ani.timeline
+        self.idx = idx
 
     def redo(self):
-        self.timeline.insert_layer()
+        self.timeline.insert_layer(idx=self.idx)
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
     def undo(self):
-        self.timeline.remove_layer()
+        self.timeline.remove_layer(self.idx)
         if self.timeline.idx == len(self.timeline):
             self.timeline.idx -= 1
         self.doc.ani.cleared = True
@@ -272,18 +275,19 @@ class InsertLayer(Action):
 
 class RemoveLayer(Action):
     display_name = _("Remove Layer")
-    def __init__(self, doc):
+    def __init__(self, doc, idx):
         self.doc = doc
         self.timeline = doc.ani.timeline
+        self.idx = idx
         self.prev_idx = None
         self.replaced = False
         
     def redo(self):
-        self.removed_layer = self.timeline.remove_layer()
+        self.removed_layer = self.timeline.remove_layer(self.idx)
         for c in self.removed_layer.get_all_cels():
             self.doc.layers.remove(c)
         self.prev_idx = self.doc.layer_idx
-        new_idx = self.timeline.layer.cel_at(self.timeline.idx)
+        new_idx = self.timeline.layer.cel_at(self.idx)
         if new_idx is not None:
             self.doc.layer_idx = new_idx
         else:
@@ -304,7 +308,7 @@ class RemoveLayer(Action):
             self.timeline.layer_idx = 0
         for c in self.removed_layer.get_all_cels():
             self.doc.layers.insert(c)
-        self.timeline.insert_layer(self.removed_layer)
+        self.timeline.insert_layer(self.removed_layer, self.idx)
         self.doc.layer_idx = self.prev_idx
 
         self.doc.ani.update_opacities()

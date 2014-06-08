@@ -47,6 +47,7 @@ import preferenceswindow
 import brusheditor
 import layerswindow
 import animationwindow
+import timelinewindow
 import previewwindow
 import optionspanel
 import framewindow

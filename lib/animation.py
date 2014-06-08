@@ -479,15 +479,16 @@ class Animation(object):
         if new: self.cleared = True
         self.doc.call_doc_observers()
     
-    def change_description(self, new_description):
-        frame = self.timeline.get_selected()
+    def change_description(self, new_description, frame=None):
+        if frame is None: frame = self.timeline.get_selected()
         self.doc.do(anicommand.ChangeDescription(self.doc, frame, self.timeline.layer_idx, self.timeline.idx, new_description))
     
-    def add_cel(self):
-        frame = self.timeline.get_selected()
-        if frame.cel is not None:
+    def add_cel(self, layer=None, frame=None):
+        if layer is None: layer = self.timeline.layer_idx
+        if frame is None: frame = self.timeline.idx
+        if self.timeline[layer][frame].cel is not None:
             return
-        self.doc.do(anicommand.AddCel(self.doc, frame, self.timeline.idx))
+        self.doc.do(anicommand.AddCel(self.doc, layer, frame))
 
     def remove_cel(self):
         frame = self.timeline.get_selected()
@@ -495,12 +496,19 @@ class Animation(object):
             return
         self.doc.do(anicommand.RemoveCel(self.doc, frame))
 
-    def insert_frames(self, amount=1):
-        self.doc.do(anicommand.InsertFrames(self.doc, amount))
+    def insert_frames(self, layer=None, frame=None, amount=1):
+        if layer is None: layer = self.timeline.layer_idx
+        if frame is None: frame = self.timeline.idx
+        self.doc.do(anicommand.InsertFrames(self.doc, amount, layer, frame))
 
-    def remove_frame(self):
-        frame = self.timeline.get_selected()
-        self.doc.do(anicommand.RemoveFrame(self.doc, frame))
+    def remove_frame(self, layer=None, frame=None):
+        if layer is None: layer = self.timeline.layer_idx
+        if frame is None: frame = self.timeline.idx
+        self.doc.do(anicommand.RemoveFrame(self.doc, frame, layer))
+
+    def move_frame(self, frame, amount):
+        self.timeline.insert(frame+amount,self.timeline.pop(frame))
+        self.doc.call_doc_observers()
 
     def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
@@ -517,11 +525,11 @@ class Animation(object):
         self.cleared = True
         self.doc.call_doc_observers()
 
-    def add_layer(self):
-        self.doc.do(anicommand.InsertLayer(self.doc))
+    def add_layer(self, idx=None):
+        self.doc.do(anicommand.InsertLayer(self.doc, idx))
 
-    def remove_layer(self):
-        self.doc.do(anicommand.RemoveLayer(self.doc))
+    def remove_layer(self, idx=None):
+        self.doc.do(anicommand.RemoveLayer(self.doc, idx))
 
     def sort_layers(self):
         new_order = self.timeline.get_order(self.doc.layers)

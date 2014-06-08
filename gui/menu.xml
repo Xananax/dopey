@@ -228,7 +228,7 @@
       <menuitem action='TrimLayer'/>
     </menu>
     <menu action='AnimationMenu'>
-      <menuitem action='AnimationTool'/>
+      <menuitem action='TimelineTool'/>
       <separator/>
       <menuitem action='AddCel'/>
       <menuitem action='ToggleKey'/>
