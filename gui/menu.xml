@@ -233,6 +233,9 @@
       <menuitem action='AddCel'/>
       <menuitem action='ToggleKey'/>
       <separator/>
+      <menuitem action='PrevAniLayer'/>
+      <menuitem action='NextAniLayer'/>
+      <separator/>
       <menuitem action='PrevFrame'/>
       <menuitem action='NextFrame'/>
       <menuitem action='PrevFrameWithCel'/>

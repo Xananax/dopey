@@ -905,6 +905,22 @@ Perhaps an increasing amount.
         </object>
       </child>
       <child>
+        <object class="GtkAction" id="PrevAniLayer">
+          <property name="label" translatable="yes"
+            context="Menu|Animation|">Previous Layer</property>
+            <signal name="activate" handler="previous_ani_layer_cb"/>
+        </object>
+        <accelerator key="Left"/>
+      </child>
+      <child>
+        <object class="GtkAction" id="NextAniLayer">
+          <property name="label" translatable="yes"
+            context="Menu|Animation|">Next Layer</property>
+            <signal name="activate" handler="next_ani_layer_cb"/>
+        </object>
+        <accelerator key="Right"/>
+      </child>
+      <child>
         <object class="GtkAction" id="AddCel">
           <property name="label" translatable="yes"
             context="Menu|Animation|">Add cel to this frame</property>

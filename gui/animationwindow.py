@@ -307,7 +307,7 @@ class AnimationTool (gtk.VBox):
         self.treeview.set_model(None)
 
         self.listmodel.clear()
-        xsheet_list = self.ani.timeline.get_list()
+        xsheet_list = self.ani.timeline.layer.enumerate()
         for i, frame, in xsheet_list:
             self.listmodel.append((i, frame))
 

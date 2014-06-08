@@ -510,14 +510,14 @@ class TimeLine(list):
 
     def goto_next_layer(self):
         if not self.has_next_layer():
-            raise IndexError('Trying to go to next at the last layer.')
+            print 'IndexError: Trying to go to next at the last layer.'
         else:
             self.layer_idx += 1
             self.check()
 
     def goto_previous_layer(self):
         if not self.has_previous_layer():
-            raise IndexError('Trying to go to previous at the first layer.')
+            print 'IndexError: Trying to go to previous at the first layer.'
         else:
             self.layer_idx -= 1
             self.check()

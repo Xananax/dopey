@@ -893,8 +893,16 @@ class DrawWindow (gtk.Window):
         tooltip.set_markup(markup)
         return True
 
-    def previous_frame_cb(self, action):
+    def previous_ani_layer_cb(self, action):
         ani = self.app.doc.ani.model   # this is not set yet in __init__
+        ani.previous_layer()
+
+    def next_ani_layer_cb(self, action):
+        ani = self.app.doc.ani.model
+        ani.next_layer()
+
+    def previous_frame_cb(self, action):
+        ani = self.app.doc.ani.model
         ani.previous_frame()
 
     def next_frame_cb(self, action):
