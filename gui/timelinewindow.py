@@ -573,7 +573,7 @@ class Gridd(Gtk.Grid):
         self.scroll_frame.get_vscrollbar().hide()
         self.scroll_frame.get_hscrollbar().hide()
         self.scroll_frame.add(self.frame_widget)
-        self.scroll_frame.set_min_content_width(24)
+        self.scroll_frame.set_min_content_width(30)
         self.scroll_frame.set_vexpand(True)
         self.timeline_widget.connect('size_changed', self.frame_widget.resize)
         
@@ -807,9 +807,8 @@ class TimelineTool(Gtk.VBox):
         framebuttons_hbox.pack_start(paste_button)
 
 
-
-        self.add(self.grid)
-        self.add(framebuttons_hbox)
+        self.pack_start(self.grid)
+        self.pack_start(framebuttons_hbox, expand=False)
         self.app.doc.model.doc_observers.append(self._update)
 
     def tool_widget_properties(self):
