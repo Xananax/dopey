@@ -19,10 +19,8 @@ class Timeline(GObject.GObject):
         'addrename_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
         'update': (GObject.SIGNAL_RUN_FIRST, None,())
     }
-    def __init__(self, layers=[], current=0):
+    def __init__(self, app):
         GObject.GObject.__init__(self)
-        from application import get_app
-        app = get_app()
         self.app = app
         self.ani = app.doc.ani.model
         self.data = self.ani.timeline
@@ -190,8 +188,9 @@ class LayerWidget(Gtk.DrawingArea):
 class FrameWidget(Gtk.DrawingArea):
     __gtype_name__ = 'FrameWidget'
 
-    def __init__(self, timeline):
+    def __init__(self, timeline, app):
         Gtk.Widget.__init__(self)
+        self.app = app
         self.timeline = timeline
 
         self.set_size_request(30, 600)
@@ -277,10 +276,8 @@ class TimelineWidget(Gtk.DrawingArea):
     __gsignals__ = {
         'size_changed': (GObject.SIGNAL_RUN_FIRST, None,(int, int))
     }
-    def __init__(self, timeline):
+    def __init__(self, timeline, app):
         Gtk.Widget.__init__(self)
-        from application import get_app
-        app = get_app()
         self.app = app
         self.ani = app.doc.ani.model
 
@@ -297,7 +294,6 @@ class TimelineWidget(Gtk.DrawingArea):
         self.timeline.connect('update', self.update)
         
         #self.sh = getattr(self.app.pixmaps, 'frame_small')
-        self.sh = cairo.ImageSurface.create_from_png('sheet.png')
         
         self.strech_box_list = []
         self.strech_frame = False
@@ -501,17 +497,14 @@ class TimelineWidget(Gtk.DrawingArea):
 
 class Gridd(Gtk.Grid):
     
-    def __init__(self):
+    def __init__(self, app):
         Gtk.Grid.__init__(self)
-        from application import get_app
-        app = get_app()
         self.app = app
         self.ani = app.doc.ani.model
         self.app.doc.model.doc_observers.append(self.sort_layers)
 
-        li = self.ani.timeline
-        self.timeline = Timeline(li)
-        self.timeline_widget = TimelineWidget(self.timeline)
+        self.timeline = Timeline(app)
+        self.timeline_widget = TimelineWidget(self.timeline, app)
         self.timeline_view = Gtk.Viewport()
         self.timeline_view.add(self.timeline_widget)
         self.scroll_timeline = Gtk.ScrolledWindow()
@@ -521,7 +514,7 @@ class Gridd(Gtk.Grid):
         self.scroll_timeline.set_min_content_height(300)
         self.scroll_timeline.set_min_content_width(100)
         
-        self.frame_widget = FrameWidget(self.timeline)
+        self.frame_widget = FrameWidget(self.timeline, app)
         self.scroll_frame = Gtk.ScrolledWindow()
         self.scroll_frame.set_vadjustment(self.scroll_timeline.get_vadjustment())
         self.scroll_frame.get_vscrollbar().hide()
@@ -596,10 +589,8 @@ class Gridd(Gtk.Grid):
         self.ani.sort_layers()
 
 class TimelinePropertiesDialog(Gtk.Dialog):
-    def __init__(self):
+    def __init__(self, app):
         Gtk.Dialog.__init__(self, 'Animation Properties')
-        from application import get_app
-        app = get_app()
         self.app = app
         self.ani = app.doc.ani.model
 
@@ -700,13 +691,16 @@ class TimelineTool(Gtk.VBox):
     __gtype_name__ = 'MyPaintTimelineTool'
     
     def __init__(self):
+        from application import get_app
+        app = get_app()
+        self.app = app
         Gtk.VBox.__init__(self)
 
-        grid = Gridd()
+        grid = Gridd(app)
         self.add(grid)
 
     def tool_widget_properties(self):
-        d = TimelinePropertiesDialog()
+        d = TimelinePropertiesDialog(self.app)
         d.run()
         d.destroy()
 
