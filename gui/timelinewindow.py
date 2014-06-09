@@ -1,3 +1,8 @@
+#@TODO  This is a huge mess, lots of things can be removed or simplified..
+#             and a lot of other things should be renamed and tweaked
+
+
+
 from gi.repository import Gtk, GObject
 from gi.repository import Gdk, GdkPixbuf
 
@@ -64,6 +69,13 @@ class Timeline(GObject.GObject):
             return int((x - self.frame_width_active + self.frame_width)/self.frame_width)
         else:
             return int((x)/self.frame_width)
+
+    def get_last(self):
+        fh = self.frame_height
+        sh = self.grid.scroll_timeline.get_allocation().height
+        return int(max((self.data.get_length() + 1) * fh,
+                   (self.data.idx + 2) * fh,
+                   self.grid.scroll_timeline.get_vadjustment().get_value() + sh + fh))
         
         
 class LayerWidget(Gtk.DrawingArea):
@@ -136,7 +148,7 @@ class LayerWidget(Gtk.DrawingArea):
                 lines = int(wh // th)
                 cr.set_source_rgb(0, 0, 0)
                 for nt, t in enumerate(text):
-                    xb, yb, dimx, dimy = cr.text_extents(t)[:4]
+                    dimx = cr.text_extents(t)[2]
                     if nt > lines - 1: break
                     if len(text) == 1:
                         cr.move_to(x + (fwa - dimx)//2, (th + wh)//2)
@@ -235,7 +247,7 @@ class FrameWidget(Gtk.DrawingArea):
         cr.fill();
         # current frame
         cr.set_source_rgb(0.9, 0.9, 0.9)
-        cr.rectangle(1, self.timeline.data.idx*fh+m, 29, fh)
+        cr.rectangle(1, self.timeline.data.idx*fh+m, ww, fh)
         cr.fill();
         cr.set_source_rgb(0, 0, 0)
         cr.rectangle(0, self.timeline.data.idx*fh+m, ww, 1)
@@ -245,18 +257,24 @@ class FrameWidget(Gtk.DrawingArea):
         cr.set_font_size(10)
         cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         for f, i in enumerate(range(0, wh, fh), 1):
-            cr.rectangle(24, i+m, 6, 1)
+            cr.rectangle(ww-2, i+m, 6, 1)
+            dimx = cr.text_extents(str(f))[2]
             if f % self.timeline.data.fps == 0:
                 cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
-                cr.move_to(8, i+fh+m-(fh/4))
+                dimx = cr.text_extents(str(f))[2]
+                cr.move_to(ww-dimx-5, i+fh+m-(fh/4))
                 cr.show_text(str(f))
                 cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            elif fh <= 4:
+                if f % 4 == 0:
+                    cr.move_to(ww-dimx-5, i+fh+m-(fh/4))
+                    cr.show_text(str(f))
             elif fh <= 8:
                 if f % 2 == 0:
-                    cr.move_to(8, i+fh+m-(fh/4))
+                    cr.move_to(ww-dimx-5, i+fh+m-(fh/4))
                     cr.show_text(str(f))
             else:
-                cr.move_to(8, i+fh+m-(fh/4))
+                cr.move_to(ww-dimx-5, i+fh+m-(fh/4))
                 cr.show_text(str(f))
         cr.fill();
 
@@ -299,8 +317,6 @@ class TimelineWidget(Gtk.DrawingArea):
         self.connect("query-tooltip", self.tooltip)
         self.timeline.connect('update', self.update)
         
-        #self.sh = getattr(self.app.pixmaps, 'frame_small')
-        
         self.strech_box_list = []
         self.strech_frame = False
         self.drag_scroll = False
@@ -321,26 +337,13 @@ class TimelineWidget(Gtk.DrawingArea):
         
     def resize(self, *args, **delay):
         fh = self.timeline.frame_height
-        sh = self.timeline.grid.timeline_view.get_allocation().height
         w = self.timeline.frame_width * (len(self.timeline.data) - 1) + \
                    self.timeline.frame_width_active + 8
-        h = max((self.ani.timeline.get_length() + 1) * fh,
-                (self.ani.timeline.idx + 2) * fh,
-                self.timeline.grid.scroll_timeline.get_vadjustment().get_value() + sh + fh
-                ) + (self.timeline.margin_top * 2) + 24
-#        if h < self.h[0] and 'delayed' in delay:
-#            self.h[1] += 1
-#            if self.h[1] >= 3:
-#                self.h[0] -= self.timeline.frame_height
-#                self.h[1] -= 1
-#            h = self.h[0]
-#        else:
-#            self.h = [h, 0]
+        h = self.timeline.get_last() + (self.timeline.margin_top * 2) + 24
         ww, wh = self.get_allocation().width, self.get_allocation().height
         if ww != w or wh != h:
             self.set_size_request(w, h)
             self.emit('size_changed', w, h)
-            #print(w, h)
         
     def draw_mask(self, cr, im, x, y, w, h):
         cr.rectangle(x, y, w, h)
@@ -378,27 +381,28 @@ class TimelineWidget(Gtk.DrawingArea):
         #lines marking seconds
         fps = self.timeline.data.fps
         div_li = [1]
-
-
         for i in range(2, fps):
             if fps % i == 0 and i % div_li[-1] == 0:
                 div_li.append(i)
-
         div_li = div_li[1:]
 
         for i in range(0, max(self.ani.timeline.get_length(), 
                        self.ani.timeline.idx, wh//fh) + fps, fps):
             y = i*fh+m
+            cr.set_source_rgb(.74, .74, .74)
+            for j in range(1, fps):
+                cr.rectangle(0, y + j*fh, ww, 1)
+            cr.fill()
             for li in reversed(div_li):
                 col=.75 - (0.5/li)
                 cr.set_source_rgb(col, col, col)
                 for j in range(1, li):
                     cr.rectangle(0, y + j*fps/li*fh, ww, 1)
                 cr.fill()
-                
             cr.set_source_rgb(.2, .2, .2)
             cr.rectangle(0, y, ww, 2)
             cr.fill()
+
 
         for nl, l in enumerate(self.timeline.data):
             self.strech_box_list.append([])
@@ -413,7 +417,7 @@ class TimelineWidget(Gtk.DrawingArea):
                 cr.rectangle(x+fwa-1, 0, 1, wh)
             else:
                 cr.rectangle(x+fw-1, 0, 1, wh)
-            cr.set_source_rgb(0, 0, 0)
+            cr.set_source_rgb(.2, .2, .2)
             cr.fill();
 
             cr.set_font_size(10)
@@ -554,14 +558,13 @@ class Gridd(Gtk.Grid):
 
         self.timeline = Timeline(app, self)
         self.timeline_widget = TimelineWidget(self.timeline, app)
-        self.timeline_view = Gtk.Viewport()
-        self.timeline_view.add(self.timeline_widget)
         self.scroll_timeline = Gtk.ScrolledWindow()
-        self.scroll_timeline.add(self.timeline_view)
+        self.scroll_timeline.add(self.timeline_widget)
         self.scroll_timeline.set_hexpand(True)
         self.scroll_timeline.set_vexpand(True)
         self.scroll_timeline.set_min_content_height(300)
         self.scroll_timeline.set_min_content_width(100)
+        self.scroll_timeline.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.ALWAYS)
         self.scroll_timeline.get_vscrollbar().connect('value-changed', self.on_scrolled)
         
         self.frame_widget = FrameWidget(self.timeline, app)
@@ -587,36 +590,41 @@ class Gridd(Gtk.Grid):
         
         # try to use wheel value
         self.scroll_timeline.add_events(Gdk.EventMask.SCROLL_MASK)
-        self.scroll_timeline.connect('scroll_event', self.send_scroll)
-        
-        self.size_adjustment = Gtk.Adjustment(value=self.timeline.frame_height, lower=6, upper=32, step_incr=1)
-        self.scale = Gtk.Scale(orientation=0, adjustment=self.size_adjustment)
-        # how to hide value without lose increment
-        self.scale.set_property('draw_value', False)
+        self.scroll_timeline.connect('scroll_event', self.on_scroll_zoom)
+
+
+        self.size_adjustment = Gtk.Adjustment(value=self.timeline.frame_height, lower=4, upper=32, step_incr=1)
         self.size_adjustment.connect('value-changed', self.timeline.set_frame_height)
         self.size_adjustment.connect('value-changed', self.timeline_widget.resize)
         
         
-        self.attach(self.scale, 0, 0, 2, 1)
-        self.attach(self.scroll_layer, 1, 1, 1, 1)
-        self.attach(self.scroll_frame, 0, 2, 1, 1)
-        self.attach(self.scroll_timeline, 1, 2, 1, 1)
+        self.attach(self.scroll_layer, 1, 0, 1, 1)
+        self.attach(self.scroll_frame, 0, 1, 1, 1)
+        self.attach(self.scroll_timeline, 1, 1, 1, 1)
         self.set_property('margin', 10)
 
         self.app.doc.model.doc_observers.append(self.update_size)
+        #self.update_size()
 
     def update_size(self, *args):
         import math
         if self.ani.cleared == True:
-            self.scroll_frame.set_min_content_width(
-                                                    8*(int(math.log(max(
-                                                    self.timeline.data.get_length() + 2,
-                                                    self.ani.timeline.idx + 3
-                                                    ),10))+1)+18)
+            digits = 7*(int(math.log( \
+                        self.timeline.get_last()/self.timeline.frame_height, \
+                        10))+1)+16
+            self.scroll_frame.set_min_content_width(digits)
             self.timeline.set_frame_height(self.size_adjustment)
             self.timeline_widget.resize()
             self.ani.cleared = False
+            self.timeline.emit('update')
         self.scroll_to(self.ani.timeline.idx)
+
+    def on_scroll_zoom(self, window, event, *args):
+        if event.get_state() != 0:
+            val = self.size_adjustment.get_value()
+            dval = event.get_scroll_deltas()[2] / 2
+            self.size_adjustment.set_value(val - dval)
+            return True
 
     def on_scrolled(self, *args):
         self.timeline_widget.resize()
@@ -625,7 +633,7 @@ class Gridd(Gtk.Grid):
         if idx < 0: idx = 0
         adj = self.scroll_timeline.get_vadjustment()
         fh = self.timeline.frame_height
-        wh = self.timeline_view.get_allocation().height
+        wh = self.scroll_timeline.get_allocation().height
         sh = idx * fh
         ah = adj.get_value()
         while not ah <= sh <= ah + wh - 2*fh:
