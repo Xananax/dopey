@@ -2,10 +2,12 @@ from gi.repository import Gtk, GObject
 from gi.repository import Gdk, GdkPixbuf
 
 import cairo
+import textwrap
+
 import anidialogs
 from gettext import gettext as _
 
-
+from lib.timeline import DEFAULT_ACTIVE_CELS
 
 class Timeline(GObject.GObject):
     ''' timeline is a gobject containing the layers
@@ -26,7 +28,7 @@ class Timeline(GObject.GObject):
         self.data = self.ani.timeline
 
         self.frame_width = 22
-        self.frame_width_active = 50
+        self.frame_width_active = 70
         self.frame_height = 32
         self.frame_height_n = 3
         self.margin_top = 11
@@ -311,7 +313,7 @@ class TimelineWidget(Gtk.DrawingArea):
         cr.set_source_rgb(0, 0, 0)
         cr.fill()
         cr.rectangle(x+1, y+1, 10, 10)
-        cr.set_source_rgb(1, 1, 1)
+        cr.set_source_rgb(1, .67, .67)
         cr.fill()
         self.strech_box_list[l].append((x, y, 12, 12))
         
@@ -324,12 +326,16 @@ class TimelineWidget(Gtk.DrawingArea):
         cr.set_source_rgba(0, 0, 0, 0.1)
         cr.paint()
         # current frame
-        cr.set_source_rgb(0.9, 0.9, 0.9)
+        cr.set_source_rgb(0.85, 0.85, 0.85)
         cr.rectangle(0, self.timeline.data.idx*fh+m, ww, fh+1)
         cr.fill();
         cr.set_source_rgb(0, 0, 0)
         # draw layers
         self.strech_box_list = []
+        #line marking seconds
+        for i in range(0, self.ani.timeline.get_length() + self.timeline.data.fps, self.timeline.data.fps):
+            y = i*fh+m
+            cr.rectangle(0, y, ww, 1)
         for nl, l in enumerate(self.timeline.data):
             self.strech_box_list.append([])
             if nl > self.timeline.data.layer_idx:
@@ -337,27 +343,6 @@ class TimelineWidget(Gtk.DrawingArea):
             else:
                 x = nl * fw + 1
             lenn = self.ani.timeline.get_length()-1
-            cr.set_font_size(10)
-            cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-            for nf in l:
-                y = nf*fh+m
-                if nl == self.timeline.data.layer_idx:
-                    self.draw_mask(cr, self.sh, x, y, fwa, fh)
-                    cr.rectangle(x, y, fwa, 1)
-                    cr.rectangle(x, y+fh, fwa, 1)
-                    cr.set_source_rgb(0, 0, 0)
-                    self.draw_strech(cr, x+fwa-12, y, nl)
-                    cr.move_to(x, y + fh/2)
-                    cr.set_source_rgb(0, 0, 0)
-                    cr.show_text(l[nf].description)
-                    cr.fill();
-                else:
-                    self.draw_mask(cr, self.sh, x, y, fw, fh)
-                    cr.rectangle(x, y, fw, 1)
-                    cr.rectangle(x, y+fh, fw, 1)
-                    cr.set_source_rgb(0, 0, 0)
-                    cr.fill()
-                    self.draw_strech(cr, x+fw-12, y, nl)
 
             # between layer
             if nl == self.timeline.data.layer_idx:
@@ -366,9 +351,51 @@ class TimelineWidget(Gtk.DrawingArea):
                 cr.rectangle(x+fw-1, 0, 1, wh)
             cr.set_source_rgb(0, 0, 0)
             cr.fill();
-        for i in range(0, self.ani.timeline.get_length() + self.timeline.data.fps, self.timeline.data.fps):
-            y = i*fh+m
-            cr.rectangle(0, y, ww, 1)
+
+            cr.set_font_size(10)
+            cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+            th, tw = 10, 7
+
+            for nf in l:
+                y = nf*fh+m
+                if nl == self.timeline.data.layer_idx:
+                    if nf == self.timeline.data.idx:
+                        cr.set_source_rgb(0.94, 0.94, 0.94)
+                    else:
+                        cr.set_source_rgb(0.87, 0.87, 0.87)
+                    cr.rectangle(x, y, fwa - 1, fh)
+                    cr.fill();
+                    #self.draw_mask(cr, self.sh, x, y, fwa, fh)
+                    cr.rectangle(x, y, fwa, 1)
+                    cr.rectangle(x, y+fh, fwa, 1)
+                    cr.set_source_rgb(0, 0, 0)
+                    text = textwrap.wrap(l[nf].description, fwa//tw)
+                    lines = int(fh // th)
+                    cr.set_source_rgb(0, 0, 0)
+                    for nt, t in enumerate(text):
+                        if nt > lines - 1:
+                            break
+                        elif nt == lines - 1 and len(text) > lines:
+                            cr.move_to(x + 1, y + th + nt*th)
+                            cr.show_text(t[:-2]+'...')
+                        else:
+                            cr.move_to(x + 1, y + th + nt*th)
+                            cr.show_text(t)
+                    self.draw_strech(cr, x+fwa-9, y-3, nl)
+                    cr.fill();
+                else:
+                    if nf == self.timeline.data.idx:
+                        cr.set_source_rgb(0.91, 0.91, 0.91)
+                    else:
+                        cr.set_source_rgb(0.84, 0.84, 0.84)
+                    cr.rectangle(x, y, fw - 1, fh)
+                    cr.fill();
+                    #self.draw_mask(cr, self.sh, x, y, fw, fh)
+                    cr.rectangle(x, y, fw, 1)
+                    cr.rectangle(x, y+fh, fw, 1)
+                    cr.set_source_rgb(0, 0, 0)
+                    cr.fill()
+                    self.draw_strech(cr, x+fw-12, y, nl)
         # before layer
         cr.rectangle(0, 0, 1, wh)
         cr.set_source_rgb(0, 0, 0)
@@ -532,6 +559,100 @@ class Gridd(Gtk.Grid):
     def sort_layers(self, doc=None):
         self.ani.sort_layers()
 
+class TimelinePropertiesDialog(Gtk.Dialog):
+    def __init__(self):
+        Gtk.Dialog.__init__(self, 'Animation Properties')
+        from application import get_app
+        app = get_app()
+        self.app = app
+        self.ani = app.doc.ani.model
+
+        adj = Gtk.Adjustment(lower=0, upper=100, step_incr=1, page_incr=10)
+        self.opacity_scale = Gtk.HScale(adj)
+        opa = self.app.preferences.get('lightbox.factor', 100)
+        self.opacity_scale.set_value(opa)
+        self.opacity_scale.set_value_pos(Gtk.POS_LEFT)
+        opacity_lbl = Gtk.Label(_('Opacity:'))
+        opacity_hbox = Gtk.HBox()
+        opacity_hbox.pack_start(opacity_lbl, expand=False)
+        opacity_hbox.pack_start(self.opacity_scale, expand=True)
+        self.opacity_scale.connect('value-changed',
+                                   self.on_opacityfactor_changed)
+
+        def opacity_checkbox(attr, label, tooltip=None):
+            cb = Gtk.CheckButton(label)
+            pref = "lightbox.%s" % (attr,)
+            default = DEFAULT_ACTIVE_CELS[attr]
+            cb.set_active(self.app.preferences.get(pref, default))
+            cb.connect('toggled', self.on_opacity_toggled, attr)
+            if tooltip is not None:
+                cb.set_tooltip_text(tooltip)
+            opacityopts_vbox.pack_start(cb, expand=False)
+
+        opacityopts_vbox = Gtk.VBox()
+        opacity_checkbox('cel', _('Inmediate'), _("Show the inmediate next and previous cels."))
+        opacity_checkbox('key', _('Inmediate keys'), _("Show the cel keys that are after and before the current cel."))
+        opacity_checkbox('inbetweens', _('Inbetweens'), _("Show the cels that are between the inmediate key cels."))
+        opacity_checkbox('other keys', _('Other keys'), _("Show the other keys cels."))
+        opacity_checkbox('other', _('Other'), _("Show the rest of the cels."))
+
+        self.framerate_adjustment = Gtk.Adjustment(value=self.ani.framerate, lower=1, upper=120, step_incr=1)
+        self.framerate_adjustment.connect("value-changed", self.on_framerate_changed)
+        self.framerate_entry = Gtk.SpinButton(adjustment=self.framerate_adjustment, digits=0, climb_rate=1.5)
+        framerate_lbl = Gtk.Label(_('Frame rate:'))
+        framerate_hbox = Gtk.HBox()
+        framerate_hbox.pack_start(framerate_lbl, False, False)
+        framerate_hbox.pack_start(self.framerate_entry, False, False)
+
+        play_lightbox_cb = Gtk.CheckButton(_("Play with lightbox on"))
+        play_lightbox_cb.set_active(self.app.preferences.get("xsheet.play_lightbox", False))
+        play_lightbox_cb.connect('toggled', self.on_playlightbox_toggled)
+        play_lightbox_cb.set_tooltip_text(_("Show other frames while playing, this is slower."))
+
+        showprev_cb = Gtk.CheckButton(_("Lightbox show previous"))
+        showprev_cb.set_active(self.app.preferences.get("xsheet.lightbox_show_previous", True))
+        showprev_cb.connect('toggled', self.on_shownextprev_toggled, 'previous')
+        showprev_cb.set_tooltip_text(_("Show previous cels in the lightbox."))
+
+        shownext_cb = Gtk.CheckButton(_("Lightbox show next"))
+        shownext_cb.set_active(self.app.preferences.get("xsheet.lightbox_show_next", False))
+        shownext_cb.connect('toggled', self.on_shownextprev_toggled, 'next')
+        shownext_cb.set_tooltip_text(_("Show next cels in the lightbox."))
+
+        self.vbox.pack_start(framerate_hbox, expand=False)
+        self.vbox.pack_start(play_lightbox_cb, expand=False)
+        self.vbox.pack_start(showprev_cb, expand=False)
+        self.vbox.pack_start(shownext_cb, expand=False)
+        self.vbox.pack_start(opacity_hbox, expand=False)
+        self.vbox.pack_start(opacityopts_vbox, expand=False)
+        self.vbox.show_all()
+
+        self.set_size_request(200, -1)
+
+    def on_opacityfactor_changed(self, *ignore):
+        opa = self.opacity_scale.get_value()
+        self.app.preferences["lightbox.factor"] = opa
+        self.ani.change_opacityfactor(opa/100.0)
+        self.queue_draw()
+
+    def on_opacity_toggled(self, checkbox, attr):
+        pref = "lightbox.%s" % (attr,)
+        self.app.preferences[pref] = checkbox.get_active()
+        self.ani.toggle_opacity(attr, checkbox.get_active())
+        self.queue_draw()
+
+    def on_framerate_changed(self, adj):
+        self.ani.framerate = adj.get_value()
+        
+    def on_playlightbox_toggled(self, checkbox):
+        self.app.preferences["xsheet.play_lightbox"] = checkbox.get_active()
+
+    def on_shownextprev_toggled(self, checkbox, nextprev):
+        self.app.preferences["xsheet.lightbox_show_" + nextprev] = checkbox.get_active()
+        self.ani.toggle_nextprev(nextprev, checkbox.get_active())
+
+
+
 class TimelineTool(Gtk.VBox):
 
     stock_id = 'mypaint-tool-animation'
@@ -548,18 +669,8 @@ class TimelineTool(Gtk.VBox):
         grid = Gridd()
         self.add(grid)
 
-class Window(Gtk.Window):
-    
-    def __init__(self):
-        Gtk.Window.__init__(self, title='timeline')
-        grid = Gridd()
-        box = Gtk.VBox()
-        box.add(grid)
-        self.add(box)
-        
-#win = Window()
-#win.connect('delete-event', Gtk.main_quit)
-#win.set_default_size(240,-1)
-#win.show_all()
-#Gtk.main()
+    def tool_widget_properties(self):
+        d = TimelinePropertiesDialog()
+        d.run()
+        d.destroy()
 
