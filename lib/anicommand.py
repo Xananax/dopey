@@ -224,15 +224,23 @@ class PasteCel(Action):
     def __init__(self, doc, frame):
         self.doc = doc
         self.frame = frame
-
-    def redo(self):
         self.prev_edit_operation = self.doc.ani.edit_operation
         self.prev_edit_frame = self.doc.ani.edit_frame
         self.prev_cel = self.frame.cel
+        self.operation = self.doc.ani.edit_operation
+        if self.operation == 'copy':
+            snapshot = self.doc.ani.edit_frame.cel.save_snapshot()
+            self.new_layer = layer.Layer()
+            self.new_layer.load_snapshot(snapshot)
+            self.new_layer.content_observers.append(self.doc.layer_modified_cb)
+            self.new_layer.set_symmetry_axis(doc.get_symmetry_axis())
+
+    def redo(self):
 
         if self.doc.ani.edit_operation == 'copy':
-            # TODO duplicate layer?
-            self.frame.add_cel(self.doc.ani.edit_frame.cel)
+            self.doc.layers.append(self.new_layer)
+            self._notify_canvas_observers([self.new_layer])
+            self.frame.add_cel(self.new_layer)
         elif self.doc.ani.edit_operation == 'cut':
             self.frame.add_cel(self.doc.ani.edit_frame.cel)
             self.doc.ani.edit_frame.remove_cel()
@@ -249,6 +257,10 @@ class PasteCel(Action):
         self.doc.ani.edit_operation = self.prev_edit_operation
         self.doc.ani.edit_frame = self.prev_edit_frame
         self.frame.add_cel(self.prev_cel)
+        if self.operation == 'copy':
+            self.doc.layers.remove(self.new_layer)
+            self.doc.layer_idx -= 1
+            self._notify_canvas_observers([self.doc.ani.edit_frame.cel])
         self.doc.ani.update_opacities()
         self._notify_document_observers()
 

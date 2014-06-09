@@ -286,10 +286,11 @@ class TimeLine(list):
         return True
 
     def get_first(self):
-        first = self.layer.get_first()
+        first = None
         for layer in self:
             fi = layer.get_first()
-            if fi < first and fi is not None: first = fi
+            if (fi < first or first is None) and fi is not None: first = fi
+        if first is None: first = 0
         return first
 
     def get_last(self):
@@ -297,6 +298,7 @@ class TimeLine(list):
         for layer in self:
             la = layer.get_last()
             if la > last: last = la
+        if last is None: last = 0
         return last
 
     def get_length(self):

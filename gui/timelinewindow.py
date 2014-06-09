@@ -5,6 +5,7 @@ import cairo
 import textwrap
 
 import anidialogs
+from layerswindow import stock_button
 from gettext import gettext as _
 
 from lib.timeline import DEFAULT_ACTIVE_CELS
@@ -17,13 +18,15 @@ class Timeline(GObject.GObject):
         'change_current_frame': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
         'change_selected_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
         'addrename_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
+        'scroll_amount': (GObject.SIGNAL_RUN_FIRST, None,(int,int,)),
         'update': (GObject.SIGNAL_RUN_FIRST, None,())
     }
-    def __init__(self, app):
+    def __init__(self, app, grid):
         GObject.GObject.__init__(self)
         self.app = app
         self.ani = app.doc.ani.model
         self.data = self.ani.timeline
+        self.grid = grid
 
         self.frame_width = 22
         self.frame_width_active = 70
@@ -52,6 +55,9 @@ class Timeline(GObject.GObject):
         if 0 <= n < len(self.data):
             self.data.layer_idx = n
             self.emit('update')
+
+    def do_scroll_amount(self, x, y):
+        self.grid.send_scroll(x, y)
         
     def convert_layer(self, x):
         if x > (self.data.layer_idx + 1) * self.frame_width:
@@ -297,6 +303,7 @@ class TimelineWidget(Gtk.DrawingArea):
         
         self.strech_box_list = []
         self.strech_frame = False
+        self.drag_scroll = False
         self.h = [0, 0]
         self.connect('show', self.resize)
 
@@ -313,7 +320,8 @@ class TimelineWidget(Gtk.DrawingArea):
         return True
         
     def resize(self, *args, **delay):
-        w = self.timeline.frame_width * (len(self.timeline.data) - 1) + self.timeline.frame_width_active + 8
+        w = self.timeline.frame_width * (len(self.timeline.data) - 1) + \
+                   self.timeline.frame_width_active + 8
         h = max(
                 self.ani.timeline.get_length() + 1,
                 self.ani.timeline.idx + 2
@@ -353,7 +361,8 @@ class TimelineWidget(Gtk.DrawingArea):
         # widget size
         ww, wh = self.get_allocation().width, self.get_allocation().height
         # frame size
-        fw, fwa, fh = self.timeline.frame_width, self.timeline.frame_width_active, self.timeline.frame_height
+        fw, fwa, fh = self.timeline.frame_width, self.timeline.frame_width_active, \
+                      self.timeline.frame_height
         m = self.timeline.margin_top
         cr.set_source_rgba(0, 0, 0, 0.1)
         cr.paint()
@@ -375,7 +384,8 @@ class TimelineWidget(Gtk.DrawingArea):
 
         div_li = div_li[1:]
 
-        for i in range(0, max(self.ani.timeline.get_length(), self.ani.timeline.idx, wh//fh) + fps, fps):
+        for i in range(0, max(self.ani.timeline.get_length(), 
+                       self.ani.timeline.idx, wh//fh) + fps, fps):
             y = i*fh+m
             for li in reversed(div_li):
                 col=.75 - (0.5/li)
@@ -416,11 +426,17 @@ class TimelineWidget(Gtk.DrawingArea):
                     else:
                         cr.set_source_rgb(0.87, 0.87, 0.87)
                     cr.rectangle(x, y, fwa - 1, fh)
-                    cr.fill();
-                    #self.draw_mask(cr, self.sh, x, y, fwa, fh)
+                    cr.fill()
+                    if l[nf].is_key:
+                        cr.set_source_rgb(.95, .95, 0)
+                        cr.rectangle(x, y, fwa-1, 5)
+                        cr.rectangle(x, y+fh-5, fwa-1, 5)
+                        cr.rectangle(x, y, 5, fh)
+                        cr.rectangle(x+fwa-6, y, 5, fh)
+                        cr.fill()
+                    cr.set_source_rgb(0, 0, 0)
                     cr.rectangle(x, y, fwa, 1)
                     cr.rectangle(x, y+fh, fwa, 1)
-                    cr.set_source_rgb(0, 0, 0)
                     text = textwrap.wrap(l[nf].description, fwa//tw)
                     lines = int(fh // th)
                     cr.set_source_rgb(0, 0, 0)
@@ -471,7 +487,8 @@ class TimelineWidget(Gtk.DrawingArea):
                     description = anidialogs.ask_for(self, _("Change description"),
                         _("Description"), self.timeline.data[layer][frame].description)
                     if description:
-                        self.ani.change_description(description, self.timeline.data[layer][frame])
+                        self.ani.change_description(description, 
+                                                    self.timeline.data[layer][frame])
                 else:
                     self.ani.add_cel(layer, frame)
                 self.resize(delayed=True)
@@ -481,11 +498,13 @@ class TimelineWidget(Gtk.DrawingArea):
                     self.strech_frame = (layer, frame, False)
                 self.timeline.emit('change_current_frame', frame)
                 self.timeline.emit('change_selected_layer', layer)
+        elif event.button == Gdk.BUTTON_MIDDLE:
+            self.drag_scroll = [event.x, event.y]
         return True
                     
     def move(self, widget, event):
-        f = int((event.y-1-self.timeline.margin_top)/self.timeline.frame_height)
         if self.strech_frame:
+            f = int((event.y-1-self.timeline.margin_top)/self.timeline.frame_height)
             sl, sf = self.strech_frame[0], self.strech_frame[1]
             if f == sf:
                 return
@@ -495,21 +514,30 @@ class TimelineWidget(Gtk.DrawingArea):
                 if sf+1 not in self.timeline.data[sl]:
                     self.timeline.data[sl][sf+1] = self.timeline.data[sl].pop(sf)
                 else:
-                    self.timeline.data[sl][sf+1], self.timeline.data[sl][sf] = self.timeline.data[sl].pop(sf), self.timeline.data[sl].pop(sf+1)
+                    self.timeline.data[sl][sf+1], self.timeline.data[sl][sf] = \
+                          self.timeline.data[sl].pop(sf), self.timeline.data[sl].pop(sf+1)
                 sf += 1
             while f < sf and 0 < sf:
                 if sf-1 not in self.timeline.data[sl]:
                     self.timeline.data[sl][sf-1] = self.timeline.data[sl].pop(sf)
                 else:
-                    self.timeline.data[sl][sf-1], self.timeline.data[sl][sf] = self.timeline.data[sl].pop(sf), self.timeline.data[sl].pop(sf-1)
+                    self.timeline.data[sl][sf-1], self.timeline.data[sl][sf] = \
+                          self.timeline.data[sl].pop(sf), self.timeline.data[sl].pop(sf-1)
                 sf -= 1
             self.strech_frame = (sl, sf, True)
             
             self.resize(delayed=True)
             self.timeline.emit('change_current_frame', f)
 
+        elif self.drag_scroll != False:
+            x, y = self.drag_scroll
+            dx, dy = x - event.x, y - event.y
+            self.drag_scroll = [event.x, event.y]
+            self.timeline.emit('scroll_amount', dx, dy)
+
     def release(self, widget, event):
         self.strech_frame = False
+        self.drag_scroll = False
 
 
 class Gridd(Gtk.Grid):
@@ -520,7 +548,7 @@ class Gridd(Gtk.Grid):
         self.ani = app.doc.ani.model
         self.app.doc.model.doc_observers.append(self.sort_layers)
 
-        self.timeline = Timeline(app)
+        self.timeline = Timeline(app, self)
         self.timeline_widget = TimelineWidget(self.timeline, app)
         self.timeline_view = Gtk.Viewport()
         self.timeline_view.add(self.timeline_widget)
@@ -550,6 +578,7 @@ class Gridd(Gtk.Grid):
         self.scroll_layer.set_min_content_height(25)
         self.scroll_layer.set_hexpand(True)
         self.timeline_widget.connect('size_changed', self.layer_widget.resize)
+
         
         # try to use wheel value
         self.scroll_timeline.add_events(Gdk.EventMask.SCROLL_MASK)
@@ -582,9 +611,9 @@ class Gridd(Gtk.Grid):
             self.timeline.set_frame_height(self.size_adjustment)
             self.timeline_widget.resize()
             self.ani.cleared = False
-        self.set_scroll(self.ani.timeline.idx)
+        self.scroll_to(self.ani.timeline.idx)
 
-    def set_scroll(self, idx):
+    def scroll_to(self, idx):
         if idx < 0: return
         adj = self.scroll_timeline.get_vadjustment()
         fh = self.timeline.frame_height
@@ -598,9 +627,12 @@ class Gridd(Gtk.Grid):
                 adj.set_value(ah-fh)
             ah = adj.get_value()
         
-    def send_scroll(self, ar, gs):
-        pass
-        #~ self.vscroll.emit('scroll_event', gs)
+    def send_scroll(self, dx, dy):
+        hadj = self.scroll_timeline.get_hadjustment()
+        vadj = self.scroll_timeline.get_vadjustment()
+        x, y = hadj.get_value(), vadj.get_value()
+        hadj.set_value(x + dx)
+        vadj.set_value(y + dy)
 
     def sort_layers(self, doc=None):
         self.ani.sort_layers()
@@ -711,15 +743,137 @@ class TimelineTool(Gtk.VBox):
     
     def __init__(self):
         from application import get_app
+        Gtk.VBox.__init__(self)
         app = get_app()
         self.app = app
-        Gtk.VBox.__init__(self)
+        self.ani = app.doc.ani.model
+        self.is_playing = False
 
         self.grid = Gridd(app)
+
+
+        # playback controls:
+        self.play_button = stock_button(Gtk.STOCK_MEDIA_PLAY)
+        self.play_button.connect('clicked', self.on_animation_play)
+        self.play_button.set_tooltip_text(_('Play animation'))
+        
+        self.pause_button = stock_button(Gtk.STOCK_MEDIA_PAUSE)
+        self.pause_button.connect('clicked', self.on_animation_pause)
+        self.pause_button.set_tooltip_text(_('Pause animation'))
+        self.pause_button.hide()
+
+        self.stop_button = stock_button(Gtk.STOCK_MEDIA_STOP)
+        self.stop_button.connect('clicked', self.on_animation_stop)
+        self.stop_button.set_tooltip_text(_('Stop animation'))
+
+        # frames edit controls:
+        cut_button = stock_button(Gtk.STOCK_CUT)
+        cut_button.connect('clicked', self.on_cut)
+        cut_button.set_tooltip_text(_('Cut cel'))
+        self.cut_button = cut_button
+
+        copy_button = stock_button(Gtk.STOCK_COPY)
+        copy_button.connect('clicked', self.on_copy)
+        copy_button.set_tooltip_text(_('Copy cel'))
+        self.copy_button = copy_button
+
+        paste_button = stock_button(Gtk.STOCK_PASTE)
+        paste_button.connect('clicked', self.on_paste)
+        paste_button.set_tooltip_text(_('Paste cel'))
+        self.paste_button = paste_button
+
+        framebuttons_hbox = Gtk.HBox()
+        framebuttons_hbox.pack_start(self.play_button)
+        framebuttons_hbox.pack_start(self.pause_button)
+        framebuttons_hbox.pack_start(self.stop_button)
+        framebuttons_hbox.pack_start(cut_button)
+        framebuttons_hbox.pack_start(copy_button)
+        framebuttons_hbox.pack_start(paste_button)
+
+
+
         self.add(self.grid)
+        self.add(framebuttons_hbox)
+        self.app.doc.model.doc_observers.append(self._update)
 
     def tool_widget_properties(self):
         d = TimelinePropertiesDialog(self.grid.timeline, self.app)
         d.run()
         d.destroy()
+
+
+    def _update(self, *args):
+        self._update_buttons_sensitive()
+
+        if not self.is_playing and self.ani.player_state == "play":
+            use_lightbox = self.app.preferences.get("xsheet.play_lightbox",
+                                                    False)
+            self._play_animation(use_lightbox=use_lightbox)
+        
+    def _change_player_buttons(self):
+        if self.is_playing:
+            self.play_button.hide()
+            self.pause_button.show()
+        else:
+            self.play_button.show()
+            self.pause_button.hide()
+        self.stop_button.set_sensitive(self.is_playing)
+
+    def _update_buttons_sensitive(self):
+        self.cut_button.set_sensitive(self.ani.can_cutcopy())
+        self.copy_button.set_sensitive(self.ani.can_cutcopy())
+        self.paste_button.set_sensitive(self.ani.can_paste())
+
+    def _call_player(self, use_lightbox=False):
+        self.ani.player_next(use_lightbox)
+        keep_playing = True
+        if self.ani.player_state == "stop":
+            self.ani.select_without_undo(self.beforeplay_frame)
+            keep_playing = False
+            self.is_playing = False
+            self._change_player_buttons()
+            self.ani.player_state = None
+            self._update()
+        elif self.ani.player_state == "pause":
+            keep_playing = False
+            self.is_playing = False
+            self._change_player_buttons()
+            self.ani.player_state = None
+            self._update()
+        return keep_playing
+
+    def _play_animation(self, from_first_frame=True, use_lightbox=False):
+        self.is_playing = True
+        self.beforeplay_frame = self.ani.timeline.idx
+        if from_first_frame:
+            self.ani.timeline.select(self.ani.timeline.get_first())
+        self._change_player_buttons()
+        self.ani.hide_all_frames()
+        # animation timer
+        ms_per_frame = int(round(1000.0/self.ani.timeline.fps))
+
+        # show first frame immediately, otherwise there's a single frame delay
+        # @TODO: it seems to wait one frame before stopping too
+        self._call_player(use_lightbox)
+
+        GObject.timeout_add(ms_per_frame, self._call_player, use_lightbox)
+
+
+    def on_animation_play(self, button):
+        self.ani.play_animation()
+
+    def on_animation_pause(self, button):
+        self.ani.pause_animation()
+
+    def on_animation_stop(self, button):
+        self.ani.stop_animation()
+
+    def on_cut(self, button):
+        self.ani.cutcopy_cel('cut')
+
+    def on_copy(self, button):
+        self.ani.cutcopy_cel('copy')
+
+    def on_paste(self, button):
+        self.ani.paste_cel()
 

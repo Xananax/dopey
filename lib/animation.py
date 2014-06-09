@@ -560,6 +560,7 @@ class Animation(object):
         self.update_opacities()
     
     def can_cutcopy(self):
+        if self.timeline.idx not in self.timeline.layer: return False
         frame = self.timeline.get_selected()
         return frame.cel is not None
 
@@ -570,10 +571,11 @@ class Animation(object):
         self.doc.call_doc_observers()
 
     def can_paste(self):
+        if self.edit_frame is None: return False
+        if self.timeline.idx not in self.timeline.layer: return True
         frame = self.timeline.get_selected()
-        return self.edit_frame is not None and \
-            self.edit_frame != frame and \
-            frame.cel == None
+        return self.edit_frame != frame and \
+               frame.cel == None
 
     def paste_cel(self):
         frame = self.timeline.get_selected()
