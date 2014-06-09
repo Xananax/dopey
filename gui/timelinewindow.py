@@ -16,7 +16,7 @@ class Timeline(GObject.GObject):
     __gsignals__ = {
         'change_current_frame': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
         'change_selected_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
-        'addremove_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
+        'addrename_layer': (GObject.SIGNAL_RUN_FIRST, None,(int,)),
         'update': (GObject.SIGNAL_RUN_FIRST, None,())
     }
     def __init__(self, layers=[], current=0):
@@ -50,15 +50,6 @@ class Timeline(GObject.GObject):
         self.ani.select(n)
         self.emit('update')
         
-    def do_addremove_layer(self, n):
-        if 0 <= n < len(self.data):
-            self.ani.remove_layer(n)
-            self.emit('update')
-        else:
-            self.ani.add_layer(len(self.data))
-            self.data.layer_idx = len(self.data) - 1
-            self.emit('update')
-        
     def do_change_selected_layer(self, n):
         if 0 <= n < len(self.data):
             self.data.layer_idx = n
@@ -81,17 +72,26 @@ class LayerWidget(Gtk.DrawingArea):
         self.move_layer = False
 
         self.set_size_request(100, 25)
+        self.set_has_tooltip(True)
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | 
                         Gdk.EventMask.BUTTON_RELEASE_MASK |
                         Gdk.EventMask.BUTTON1_MOTION_MASK )
         self.connect('button-press-event', self.clic)
         self.connect('motion-notify-event', self.move)
         self.connect('button-release-event', self.release)
+        self.connect("query-tooltip", self.tooltip)
         self.timeline.connect('update', self.update)
         
         
     def update(self, *args):
         self.queue_draw()
+    
+    def tooltip(self, item, x, y, keyboard_mode, tooltip):
+        idx = self.timeline.convert_layer(x)
+        if not 0 <= idx < len(self.timeline.data): return False
+        text = self.timeline.data[idx].description
+        tooltip.set_text(text)
+        return True
         
     def resize(self, arg, w, h):
         ww, wh = self.get_allocation().width, self.get_allocation().height
@@ -108,6 +108,8 @@ class LayerWidget(Gtk.DrawingArea):
         cr.rectangle(0, 1, 1, wh-1)
         cr.set_source_rgb(0, 0, 0)
         cr.fill();
+        cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        th, tw = 9, 6
         for nl, l in enumerate(self.timeline.data):
             if nl > self.timeline.data.layer_idx:
                 x = nl * fw + fwa - fw
@@ -125,6 +127,21 @@ class LayerWidget(Gtk.DrawingArea):
             if nl == self.timeline.data.layer_idx:
                 cr.rectangle(x+fwa, 1, 1, wh-1)
                 cr.rectangle(x+1, 0, fwa-1, 1)
+                cr.set_font_size(10)
+                text = textwrap.wrap(l.description, fwa//tw)
+                lines = int(wh // th)
+                cr.set_source_rgb(0, 0, 0)
+                for nt, t in enumerate(text):
+                    xb, yb, dimx, dimy = cr.text_extents(t)[:4]
+                    if nt > lines - 1: break
+                    if len(text) == 1:
+                        cr.move_to(x + (fwa - dimx)//2, (th + wh)//2)
+                    else:
+                        cr.move_to(x + (fwa - dimx)//2, th + nt*th)
+                    if nt == lines - 1 and len(text) > lines:
+                        cr.show_text(t[:-2]+'...')
+                    else:
+                        cr.show_text(t)
             else:
                 cr.rectangle(x+fw, 1, 1, wh-1)
                 cr.rectangle(x+1, 0, fw-1, 1)
@@ -135,7 +152,17 @@ class LayerWidget(Gtk.DrawingArea):
         if event.button == Gdk.BUTTON_PRIMARY:
             layer = self.timeline.convert_layer(event.x)
             if event.type == Gdk.EventType._2BUTTON_PRESS:
-                self.timeline.emit('addremove_layer', layer)
+                if 0 <= layer < len(self.timeline.data):
+                    description = anidialogs.ask_for(self, _("Change description"),
+                        _("Description"), self.timeline.data[layer].description)
+                    if description:
+                        self.timeline.data[layer].description = description
+                        self.timeline.emit('update')
+                else:
+                    self.ani.add_layer(len(self.timeline.data))
+                    self.timeline.data.layer_idx = len(self.timeline.data) - 1
+                    self.timeline.emit('update')
+                self.move_layer = False
             else:
                 self.move_layer = layer
                 self.timeline.emit('change_selected_layer', layer)
@@ -154,12 +181,10 @@ class LayerWidget(Gtk.DrawingArea):
                 self.ani.move_frame(sl, -1)
                 sl -= 1
             self.move_layer = sl
-        self.timeline.emit('change_selected_layer', l)
-        #print('mooove')
+            self.timeline.emit('change_selected_layer', sl)
 
     def release(self, widget, event):
-        #print('releaaaase')
-        pass
+        self.move_layer = False
         
         
 class FrameWidget(Gtk.DrawingArea):
@@ -261,12 +286,14 @@ class TimelineWidget(Gtk.DrawingArea):
 
         self.timeline = timeline
 
+        self.set_has_tooltip(True)
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | 
                         Gdk.EventMask.BUTTON_RELEASE_MASK |
                         Gdk.EventMask.BUTTON1_MOTION_MASK)
         self.connect('button-press-event', self.clic)
         self.connect('motion-notify-event', self.move)
         self.connect('button-release-event', self.release)
+        self.connect("query-tooltip", self.tooltip)
         self.timeline.connect('update', self.update)
         
         #self.sh = getattr(self.app.pixmaps, 'frame_small')
@@ -279,6 +306,15 @@ class TimelineWidget(Gtk.DrawingArea):
 
     def update(self, *args):
         self.queue_draw()
+    
+    def tooltip(self, item, x, y, keyboard_mode, tooltip):
+        l_idx = self.timeline.convert_layer(x)
+        if not 0 <= l_idx < len(self.timeline.data): return False
+        idx = int((y - self.timeline.margin_top) / self.timeline.frame_height)
+        if idx not in self.timeline.data[l_idx]: return False
+        text = self.timeline.data[l_idx][idx].description
+        tooltip.set_text(text)
+        return True
         
     def resize(self, *args, **delay):
         w = self.timeline.frame_width * (len(self.timeline.data) - 1) + self.timeline.frame_width_active + 8

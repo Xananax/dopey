@@ -497,7 +497,7 @@ class TimeLine(list):
         if idx is None:
             idx = self.layer_idx
         if frames is None:
-            frames = FrameList(len(self.layer))
+            frames = FrameList()
         self.insert(idx, frames)
 
     def select_layer(self, n):
