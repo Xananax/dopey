@@ -34,7 +34,6 @@ class Animation(object):
     def __init__(self, doc):
         self.doc = doc
         self.timeline = None
-        self.framerate = 24.0
         self.cleared = False
         self.using_legacy = False
         self.xdna = XDNA()
@@ -79,7 +78,7 @@ class Animation(object):
             'metadata': x.application_signature,
             'XDNA': x.xdna_signature,
             'xsheet': {
-                'framerate': self.framerate,
+                'framerate': self.timeline.fps,
                 'raster_frame_lists': []
             }
         }
@@ -119,7 +118,7 @@ class Animation(object):
             'metadata': x.application_signature,
             'XDNA': x.xdna_signature,
             'xsheet': {
-                'framerate': self.framerate,
+                'framerate': self.timeline.fps,
                 'raster_frame_lists': []
             }
         }
@@ -171,7 +170,7 @@ class Animation(object):
             raster_frames = data['xsheet']['raster_frame_lists']
 
             self.timeline = TimeLine(self.opacities)
-            self.framerate = data['xsheet']['framerate']
+            self.timeline.fps = data['xsheet']['framerate']
             self.cleared = True
 
 

@@ -360,14 +360,34 @@ class TimelineWidget(Gtk.DrawingArea):
         # current frame
         cr.set_source_rgb(0.85, 0.85, 0.85)
         cr.rectangle(0, self.timeline.data.idx*fh+m, ww, fh+1)
-        cr.fill();
-        cr.set_source_rgb(0, 0, 0)
+        cr.fill()
         # draw layers
         self.strech_box_list = []
-        #line marking seconds
-        for i in range(0, self.ani.timeline.get_length() + self.timeline.data.fps, self.timeline.data.fps):
+
+        #lines marking seconds
+        fps = self.timeline.data.fps
+        div_li = [1]
+
+
+        for i in range(2, fps):
+            if fps % i == 0 and i % div_li[-1] == 0:
+                div_li.append(i)
+
+        div_li = div_li[1:]
+
+        for i in range(0, max(self.ani.timeline.get_length(), self.ani.timeline.idx, wh//fh) + fps, fps):
             y = i*fh+m
-            cr.rectangle(0, y, ww, 1)
+            for li in reversed(div_li):
+                col=.75 - (0.5/li)
+                cr.set_source_rgb(col, col, col)
+                for j in range(1, li):
+                    cr.rectangle(0, y + j*fps/li*fh, ww, 1)
+                cr.fill()
+                
+            cr.set_source_rgb(.2, .2, .2)
+            cr.rectangle(0, y, ww, 2)
+            cr.fill()
+
         for nl, l in enumerate(self.timeline.data):
             self.strech_box_list.append([])
             if nl > self.timeline.data.layer_idx:
@@ -485,13 +505,10 @@ class TimelineWidget(Gtk.DrawingArea):
                 sf -= 1
             self.strech_frame = (sl, sf, True)
             
-        self.resize(delayed=True)
-        self.timeline.emit('change_current_frame', f)
-        #print('mooove')
+            self.resize(delayed=True)
+            self.timeline.emit('change_current_frame', f)
 
     def release(self, widget, event):
-        #print('releaaaase')
-        #print('what')
         self.strech_frame = False
 
 
@@ -589,10 +606,11 @@ class Gridd(Gtk.Grid):
         self.ani.sort_layers()
 
 class TimelinePropertiesDialog(Gtk.Dialog):
-    def __init__(self, app):
+    def __init__(self, timeline, app):
         Gtk.Dialog.__init__(self, 'Animation Properties')
         self.app = app
         self.ani = app.doc.ani.model
+        self.timeline = timeline
 
         adj = Gtk.Adjustment(lower=0, upper=100, step_incr=1, page_incr=10)
         self.opacity_scale = Gtk.HScale(adj)
@@ -623,7 +641,7 @@ class TimelinePropertiesDialog(Gtk.Dialog):
         opacity_checkbox('other keys', _('Other keys'), _("Show the other keys cels."))
         opacity_checkbox('other', _('Other'), _("Show the rest of the cels."))
 
-        self.framerate_adjustment = Gtk.Adjustment(value=self.ani.framerate, lower=1, upper=120, step_incr=1)
+        self.framerate_adjustment = Gtk.Adjustment(value=self.ani.timeline.fps, lower=1, upper=120, step_incr=1)
         self.framerate_adjustment.connect("value-changed", self.on_framerate_changed)
         self.framerate_entry = Gtk.SpinButton(adjustment=self.framerate_adjustment, digits=0, climb_rate=1.5)
         framerate_lbl = Gtk.Label(_('Frame rate:'))
@@ -669,7 +687,8 @@ class TimelinePropertiesDialog(Gtk.Dialog):
         self.queue_draw()
 
     def on_framerate_changed(self, adj):
-        self.ani.framerate = adj.get_value()
+        self.ani.timeline.fps = int(adj.get_value())
+        self.timeline.emit('update')
         
     def on_playlightbox_toggled(self, checkbox):
         self.app.preferences["xsheet.play_lightbox"] = checkbox.get_active()
@@ -696,11 +715,11 @@ class TimelineTool(Gtk.VBox):
         self.app = app
         Gtk.VBox.__init__(self)
 
-        grid = Gridd(app)
-        self.add(grid)
+        self.grid = Gridd(app)
+        self.add(self.grid)
 
     def tool_widget_properties(self):
-        d = TimelinePropertiesDialog(self.app)
+        d = TimelinePropertiesDialog(self.grid.timeline, self.app)
         d.run()
         d.destroy()
 
