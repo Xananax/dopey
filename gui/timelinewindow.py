@@ -320,20 +320,22 @@ class TimelineWidget(Gtk.DrawingArea):
         return True
         
     def resize(self, *args, **delay):
+        fh = self.timeline.frame_height
+        sh = self.timeline.grid.timeline_view.get_allocation().height
         w = self.timeline.frame_width * (len(self.timeline.data) - 1) + \
                    self.timeline.frame_width_active + 8
-        h = max(
-                self.ani.timeline.get_length() + 1,
-                self.ani.timeline.idx + 2
-                ) * self.timeline.frame_height + (self.timeline.margin_top * 2) + 24
-        if h < self.h[0] and 'delayed' in delay:
-            self.h[1] += 1
-            if self.h[1] >= 3:
-                self.h[0] -= self.timeline.frame_height
-                self.h[1] -= 1
-            h = self.h[0]
-        else:
-            self.h = [h, 0]
+        h = max((self.ani.timeline.get_length() + 1) * fh,
+                (self.ani.timeline.idx + 2) * fh,
+                self.timeline.grid.scroll_timeline.get_vadjustment().get_value() + sh + fh
+                ) + (self.timeline.margin_top * 2) + 24
+#        if h < self.h[0] and 'delayed' in delay:
+#            self.h[1] += 1
+#            if self.h[1] >= 3:
+#                self.h[0] -= self.timeline.frame_height
+#                self.h[1] -= 1
+#            h = self.h[0]
+#        else:
+#            self.h = [h, 0]
         ww, wh = self.get_allocation().width, self.get_allocation().height
         if ww != w or wh != h:
             self.set_size_request(w, h)
@@ -491,7 +493,8 @@ class TimelineWidget(Gtk.DrawingArea):
                                                     self.timeline.data[layer][frame])
                 else:
                     self.ani.add_cel(layer, frame)
-                self.resize(delayed=True)
+                #self.resize(delayed=True)
+                self.resize()
             else:
                 self.strech_frame = False
                 if layer < len(self.timeline.data) and frame in self.timeline.data[layer]:
@@ -526,7 +529,8 @@ class TimelineWidget(Gtk.DrawingArea):
                 sf -= 1
             self.strech_frame = (sl, sf, True)
             
-            self.resize(delayed=True)
+            #self.resize(delayed=True)
+            self.resize()
             self.timeline.emit('change_current_frame', f)
 
         elif self.drag_scroll != False:
@@ -558,6 +562,7 @@ class Gridd(Gtk.Grid):
         self.scroll_timeline.set_vexpand(True)
         self.scroll_timeline.set_min_content_height(300)
         self.scroll_timeline.set_min_content_width(100)
+        self.scroll_timeline.get_vscrollbar().connect('value-changed', self.on_scrolled)
         
         self.frame_widget = FrameWidget(self.timeline, app)
         self.scroll_frame = Gtk.ScrolledWindow()
@@ -613,8 +618,11 @@ class Gridd(Gtk.Grid):
             self.ani.cleared = False
         self.scroll_to(self.ani.timeline.idx)
 
+    def on_scrolled(self, *args):
+        self.timeline_widget.resize()
+
     def scroll_to(self, idx):
-        if idx < 0: return
+        if idx < 0: idx = 0
         adj = self.scroll_timeline.get_vadjustment()
         fh = self.timeline.frame_height
         wh = self.timeline_view.get_allocation().height
@@ -622,9 +630,9 @@ class Gridd(Gtk.Grid):
         ah = adj.get_value()
         while not ah <= sh <= ah + wh - 2*fh:
             if sh > ah:
-                adj.set_value(ah+fh)
+                adj.set_value(ah+1)
             elif sh < ah:
-                adj.set_value(ah-fh)
+                adj.set_value(ah-1)
             ah = adj.get_value()
         
     def send_scroll(self, dx, dy):
