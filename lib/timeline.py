@@ -504,7 +504,7 @@ class TimeLine(list):
 
     def select_layer(self, n):
         if not 0 <= n <= len(self)-1:
-            raise IndexError('Trying to select nonexistent layer.')
+            print 'IndexError: Trying to select nonexistent layer.'
             return
         self.layer_idx = n
 
@@ -554,20 +554,21 @@ class TimeLine(list):
         """
         opacities = {}
 
-        def get_opa(nextprev, c, idx):
+        def get_opa(nextprev, c, idx, layer):
             can_nextprev = self.nextprev[nextprev]
             if can_nextprev and self.active_cels[c]:
+                opac = self.converted_opacities[c] * layer.opacity
                 try:
-                    return round(self.converted_opacities[c] * (abs(self.idx - idx) ** -.1), 4)
+                    return round(opac * (abs(self.idx - idx) ** -.1), 4)
                 except ZeroDivisionError:
-                    return self.converted_opacities[c]
+                    return opac
             return 0
 
-        # current cel, always full opacity:
-        for cel in self.cels_at(self.idx):
-            if cel is not None: opacities[cel] = 1
-
         for l_idx, layer in enumerate(self):
+            # current cels, always full opacity:
+            cel = layer.cel_at(self.idx)
+            if cel is not None:
+                opacities[cel] = layer.opacity
 
             # explicit skip of cels:
             for f in layer.get_all_cel_keys():
@@ -577,18 +578,18 @@ class TimeLine(list):
             # next:
             next = self.get_next_cel(l_idx)
             if layer[next] and layer[next].cel not in opacities:
-                opacities[layer[next].cel] = get_opa('next', 'cel', next)
+                opacities[layer[next].cel] = get_opa('next', 'cel', next, layer)
 
             # previous:
             prev = self.get_previous_cel(l_idx)
             if layer[prev] and layer[prev].cel not in opacities:
-                opacities[layer[prev].cel] = get_opa('previous', 'cel', prev)
+                opacities[layer[prev].cel] = get_opa('previous', 'cel', prev, layer)
 
             # previous key:
             prevkey = self.get_previous_key(l_idx, False)
             if prevkey:
                 if layer[prevkey].cel and layer[prevkey].cel not in opacities:
-                    opacities[layer[prevkey].cel] = get_opa('previous', 'key', prevkey)
+                    opacities[layer[prevkey].cel] = get_opa('previous', 'key', prevkey, layer)
             else:
                 prevkey = layer.get_first()
 
@@ -596,7 +597,7 @@ class TimeLine(list):
             nextkey = self.get_next_key(l_idx, False)
             if nextkey:
                 if layer[nextkey].cel and layer[nextkey].cel not in opacities:
-                    opacities[layer[nextkey].cel] = get_opa('next', 'key', nextkey)
+                    opacities[layer[nextkey].cel] = get_opa('next', 'key', nextkey, layer)
             else:
                 nextkey = layer.get_last()
 
@@ -607,11 +608,11 @@ class TimeLine(list):
             next_inbetweens_range = layer.key_range(self.idx, 1, nextkey)
             for f in filter(has_cel, next_inbetweens_range):
                 if layer[f].cel not in opacities.keys():
-                    opacities[layer[f].cel] = get_opa('next', 'inbetweens', f)
+                    opacities[layer[f].cel] = get_opa('next', 'inbetweens', f, layer)
             prev_inbetweens_range = layer.key_range(self.idx, -1, prevkey)
             for f in filter(has_cel, prev_inbetweens_range):
                 if layer[f].cel not in opacities.keys():
-                    opacities[layer[f].cel] = get_opa('previous', 'inbetweens', f)
+                    opacities[layer[f].cel] = get_opa('previous', 'inbetweens', f, layer)
             del next_inbetweens_range, prev_inbetweens_range
 
             # frames outside immediate keys:
@@ -620,18 +621,18 @@ class TimeLine(list):
                 cel = layer[f].cel
                 if cel not in opacities.keys():
                     if layer[f].is_key:
-                        opacities[cel] = get_opa('next', 'other keys', f)
+                        opacities[cel] = get_opa('next', 'other keys', f, layer)
                     else:
-                        opacities[cel] = get_opa('next', 'other', f)
+                        opacities[cel] = get_opa('next', 'other', f, layer)
 
             prev_outside_range = layer.key_range(prevkey, -1)
             for f in filter(has_cel, prev_outside_range):
                 cel = layer[f].cel
                 if cel not in opacities.keys():
                     if layer[f].is_key:
-                        opacities[cel] = get_opa('previous', 'other keys', f)
+                        opacities[cel] = get_opa('previous', 'other keys', f, layer)
                     else:
-                        opacities[cel] = get_opa('previous', 'other', f)
+                        opacities[cel] = get_opa('previous', 'other', f, layer)
 
             del next_outside_range, prev_outside_range
 

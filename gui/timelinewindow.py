@@ -1,6 +1,7 @@
 #@TODO  This is a huge mess, lots of things can be removed or simplified..
 #             and a lot of other things should be renamed and tweaked
 
+from lib.helpers import escape
 
 
 from gi.repository import Gtk, GObject
@@ -37,7 +38,7 @@ class Timeline(GObject.GObject):
         self.frame_width_active = 70
         self.frame_height = 32
         self.frame_height_n = 3
-        self.margin_top = 11
+        self.margin_top = 6
 
         self.app.doc.model.doc_observers.append(self.update)
 
@@ -47,8 +48,8 @@ class Timeline(GObject.GObject):
         
     def set_frame_height(self, adj):
 #        n = int(adj.props.value)
-        self.frame_height = int(adj.props.value)
 #        self.frame_height = self.frame_height_li[n]
+        self.frame_height = int(adj.props.value)
         self.emit('update')
         
     def do_change_current_frame(self, n):
@@ -58,7 +59,7 @@ class Timeline(GObject.GObject):
         
     def do_change_selected_layer(self, n):
         if 0 <= n < len(self.data):
-            self.data.layer_idx = n
+            self.ani.select_layer(n)
             self.emit('update')
 
     def do_scroll_amount(self, x, y):
@@ -95,7 +96,7 @@ class LayerWidget(Gtk.DrawingArea):
         self.connect('button-press-event', self.clic)
         self.connect('motion-notify-event', self.move)
         self.connect('button-release-event', self.release)
-        self.connect("query-tooltip", self.tooltip)
+        self.connect('query-tooltip', self.tooltip)
         self.timeline.connect('update', self.update)
         
         
@@ -314,7 +315,7 @@ class TimelineWidget(Gtk.DrawingArea):
         self.connect('button-press-event', self.clic)
         self.connect('motion-notify-event', self.move)
         self.connect('button-release-event', self.release)
-        self.connect("query-tooltip", self.tooltip)
+        self.connect('query-tooltip', self.tooltip)
         self.timeline.connect('update', self.update)
         
         self.strech_box_list = []
@@ -455,7 +456,7 @@ class TimelineWidget(Gtk.DrawingArea):
                         else:
                             cr.move_to(x + 1, y + th + nt*th)
                             cr.show_text(t)
-                    self.draw_strech(cr, x+fwa-9, y-3, nl)
+                    self.draw_strech(cr, x+fwa-12, y-3, nl)
                     cr.fill();
                 else:
                     if nf == self.timeline.data.idx:
@@ -469,7 +470,7 @@ class TimelineWidget(Gtk.DrawingArea):
                     cr.rectangle(x, y+fh, fw, 1)
                     cr.set_source_rgb(0, 0, 0)
                     cr.fill()
-                    self.draw_strech(cr, x+fw-12, y, nl)
+                    self.draw_strech(cr, x+fw-12, y-3, nl)
         # before layer
         cr.rectangle(0, 0, 1, wh)
         cr.set_source_rgb(0, 0, 0)
@@ -484,6 +485,9 @@ class TimelineWidget(Gtk.DrawingArea):
             frame = (int(event.y)-1-self.timeline.margin_top)//self.timeline.frame_height
             layer = self.timeline.convert_layer(event.x)
             if event.type == Gdk.EventType._2BUTTON_PRESS:
+                if not 0 <= layer < len(self.timeline.data):
+                    self.ani.add_layer(len(self.timeline.data))
+                    layer = self.timeline.data.layer_idx = len(self.timeline.data) - 1
                 if frame in self.timeline.data[layer]:
                     for l, i in enumerate(self.strech_box_list):
                         for f, j in enumerate(i):
@@ -762,10 +766,55 @@ class TimelineTool(Gtk.VBox):
         Gtk.VBox.__init__(self)
         app = get_app()
         self.app = app
+        doc = self.app.doc.model
         self.ani = app.doc.ani.model
         self.is_playing = False
 
         self.grid = Gridd(app)
+
+
+        # layer controls:
+        from layerswindow import make_composite_op_model
+        from widgets import SPACING_CRAMPED
+        self.tooltip_format = _("<b>{blendingmode_name}</b>\n{blendingmode_description}")
+
+        layer_ctrls_table = Gtk.Table()
+        layer_ctrls_table.set_row_spacings(SPACING_CRAMPED)
+        layer_ctrls_table.set_col_spacings(SPACING_CRAMPED)
+        row = 0
+
+        layer_mode_lbl = Gtk.Label(_('Mode:'))
+        layer_mode_lbl.set_tooltip_text(
+          _("Blending mode: how the current layer combines with the "
+            "layers underneath it."))
+        layer_mode_lbl.set_alignment(0, 0.5)
+        self.layer_mode_model = make_composite_op_model()
+        self.layer_mode_combo = Gtk.ComboBox()
+        self.layer_mode_combo.set_model(self.layer_mode_model)
+        cell1 = Gtk.CellRendererText()
+        self.layer_mode_combo.pack_start(cell1)
+        self.layer_mode_combo.add_attribute(cell1, "text", 1)
+        layer_ctrls_table.attach(layer_mode_lbl, 0, 1, row, row+1, Gtk.FILL)
+        layer_ctrls_table.attach(self.layer_mode_combo, 1, 2, row, row+1, Gtk.FILL|Gtk.EXPAND)
+        row += 1
+
+        opacity_lbl = Gtk.Label(_('Opacity:'))
+        opacity_lbl.set_tooltip_text(
+          _("Layer opacity: how much of the current layer to use. Smaller "
+            "values make it more transparent."))
+        opacity_lbl.set_alignment(0, 0.5)
+        adj = Gtk.Adjustment(lower=0, upper=100, step_incr=1, page_incr=10)
+        self.opacity_scale = Gtk.HScale(adj)
+        self.opacity_scale.set_draw_value(False)
+        layer_ctrls_table.attach(opacity_lbl, 0, 1, row, row+1, Gtk.FILL)
+        layer_ctrls_table.attach(self.opacity_scale, 1, 2, row, row+1, Gtk.FILL|Gtk.EXPAND)
+
+        layerbuttons_hbox = Gtk.HBox()
+        layerbuttons_hbox.pack_start(layer_ctrls_table)
+        self.opacity_scale.connect('value-changed', self.on_opacity_changed)
+        self.layer_mode_combo.connect('changed', self.on_layer_mode_changed)
+        doc.doc_observers.append(self.update)
+        self.is_updating = False
 
 
         # playback controls:
@@ -776,7 +825,6 @@ class TimelineTool(Gtk.VBox):
         self.pause_button = stock_button(Gtk.STOCK_MEDIA_PAUSE)
         self.pause_button.connect('clicked', self.on_animation_pause)
         self.pause_button.set_tooltip_text(_('Pause animation'))
-        self.pause_button.hide()
 
         self.stop_button = stock_button(Gtk.STOCK_MEDIA_STOP)
         self.stop_button.connect('clicked', self.on_animation_stop)
@@ -807,6 +855,7 @@ class TimelineTool(Gtk.VBox):
         framebuttons_hbox.pack_start(paste_button)
 
 
+        self.pack_start(layerbuttons_hbox, expand=False)
         self.pack_start(self.grid)
         self.pack_start(framebuttons_hbox, expand=False)
         self.app.doc.model.doc_observers.append(self._update)
@@ -891,4 +940,58 @@ class TimelineTool(Gtk.VBox):
 
     def on_paste(self, button):
         self.ani.paste_cel()
+
+
+
+    def update(self, doc):
+        if self.is_updating:
+            return
+        self.is_updating = True
+
+        current_layer = doc.ani.timeline.layer
+
+        # Update the common widgets
+        self.opacity_scale.set_value(current_layer.opacity*100)
+        self.update_opacity_tooltip()
+        mode = current_layer.composite
+        def find_iter(model, path, iter, data):
+            md = model.get_value(iter, 0)
+            md_name = model.get_value(iter, 1)
+            md_desc = model.get_value(iter, 2)
+            if md == mode:
+                self.layer_mode_combo.set_active_iter(iter)
+                tooltip = self.tooltip_format.format(
+                    blendingmode_name = escape(md_name),
+                    blendingmode_description = escape(md_desc))
+                self.layer_mode_combo.set_tooltip_markup(tooltip)
+        self.layer_mode_model.foreach(find_iter, None)
+        self.is_updating = False
+
+    def update_opacity_tooltip(self):
+        scale = self.opacity_scale
+        scale.set_tooltip_text(_("Layer opacity: %d%%" % (scale.get_value(),)))
+
+
+    def on_opacity_changed(self, *ignore):
+        if self.is_updating:
+            return
+        self.is_updating = True
+        doc = self.app.doc.model
+        doc.ani.set_layer_opacity(self.opacity_scale.get_value()/100.0)
+        self.update_opacity_tooltip()
+        self.is_updating = False
+
+    def on_layer_mode_changed(self, *ignored):
+        if self.is_updating:
+            return
+        self.is_updating = True
+        doc = self.app.doc.model
+        i = self.layer_mode_combo.get_active_iter()
+        mode_name, display_name, desc = self.layer_mode_model.get(i, 0, 1, 2)
+        doc.ani.set_layer_composite(mode_name)
+        tooltip = self.tooltip_format.format(
+            blendingmode_name = escape(display_name),
+            blendingmode_description = escape(desc))
+        self.layer_mode_combo.set_tooltip_markup(tooltip)
+        self.is_updating = False
 

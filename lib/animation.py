@@ -270,7 +270,7 @@ class Animation(object):
             for j in range(len(self.timeline)):
                 cel = self.timeline[j].cel_at(i)
                 visible, opacity = cel.visible, cel.opacity
-                cel.visible, cel.opacity = True, 1.0
+                cel.visible, cel.opacity = True, self.timeline[j].opacity
                 cel.merge_into(frame)
                 cel.visible, cel.opacity = visible, opacity
             filename = '%s-%03d%s' % (prefix, i+1, ext)
@@ -512,6 +512,12 @@ class Animation(object):
     def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
 
+    def select_layer(self, idx):		#@TODO: add to undo stack
+        self.timeline.select_layer(idx)
+        self.update_opacities()
+        self.cleared = True
+        self.doc.call_doc_observers()
+
     def previous_layer(self):
         self.timeline.goto_previous_layer()
         self.update_opacities()
@@ -530,14 +536,30 @@ class Animation(object):
     def remove_layer(self, idx=None):
         self.doc.do(anicommand.RemoveLayer(self.doc, idx))
 
+    def set_layer_opacity(self, opac):
+        self.timeline.layer.opacity = opac
+        self.update_opacities()
+
+    def set_layer_composite(self, comp):
+        self.timeline.layer.composite = comp
+        for frame in self.timeline.layer:
+            f = self.timeline.layer[frame]
+            if f.cel:
+                f.cel.compositeop = comp
+                self._notify_canvas_observers(f.cel)
+        self.doc.call_doc_observers()
+
     def sort_layers(self):
         new_order = self.timeline.get_order(self.doc.layers)
+        if new_order == self.doc.layers: return
         selection = self.doc.layers[self.doc.layer_idx]
         if selection not in new_order: return
+        self.doc.layers = new_order
         self.doc.layer_idx = self.doc.layers.index(selection)
         for l, layer in enumerate(self.timeline):
             for f in layer:
                 if layer[f].has_cel():
+                    layer[f].cel.compositeop = layer.composite
                     new_name = self.generate_layername(f, l, layer[f].description)
                     layer[f].cel.name = new_name
         cel = self.timeline.layer.cel_at(self.timeline.idx)
