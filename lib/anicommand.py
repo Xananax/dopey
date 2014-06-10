@@ -299,16 +299,17 @@ class RemoveLayer(Action):
         for c in self.removed_layer.get_all_cels():
             self.doc.layers.remove(c)
         self.prev_idx = self.doc.layer_idx
+
+        if len(self.timeline) == 0:
+            self.timeline.append_layer()
+            self.timeline.layer_idx = 0
+            self.replaced = True
+
         new_idx = self.timeline.layer.cel_at(self.idx)
         if new_idx is not None:
             self.doc.layer_idx = new_idx
         else:
             self.doc.layer_idx = 0
-
-        if len(self.timeline) == 0:
-            self.layers.append_layer()
-            self.timeline.layer_idx = 0
-            self.replaced = True
 
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True

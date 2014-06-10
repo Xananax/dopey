@@ -87,6 +87,7 @@ class LayerWidget(Gtk.DrawingArea):
         self.ani = app.doc.ani.model
         self.timeline = timeline
         self.move_layer = False
+        self.layer_box_list = []
 
         self.set_size_request(100, 25)
         self.set_has_tooltip(True)
@@ -115,12 +116,22 @@ class LayerWidget(Gtk.DrawingArea):
         if ww < w:
             self.set_size_request(w, wh)
             self.queue_draw()
+    
+    def draw_strech(self, cr, x, y):
+        cr.rectangle(x, y, 12, 12)
+        cr.set_source_rgb(0, 0, 0)
+        cr.fill()
+        cr.rectangle(x+1, y+1, 10, 10)
+        cr.set_source_rgb(1, .67, .67)
+        cr.fill()
+        self.layer_box_list.append((x, y, 12, 12))
         
     def do_draw(self, cr):
         # widget size
         ww, wh = self.get_allocation().width, self.get_allocation().height
         # frame size
         fw, fwa = self.timeline.frame_width, self.timeline.frame_width_active
+        self.layer_box_list = []
         
         cr.rectangle(0, 1, 1, wh-1)
         cr.set_source_rgb(0, 0, 0)
@@ -142,6 +153,7 @@ class LayerWidget(Gtk.DrawingArea):
                 cr.set_source_rgb(0.6, 0.6, 0.6)
             cr.fill();
             if nl == self.timeline.data.layer_idx:
+                self.draw_strech(cr, x+fwa-11, 0)
                 cr.rectangle(x+fwa, 1, 1, wh-1)
                 cr.rectangle(x+1, 0, fwa-1, 1)
                 cr.set_font_size(10)
@@ -160,6 +172,7 @@ class LayerWidget(Gtk.DrawingArea):
                     else:
                         cr.show_text(t)
             else:
+                self.draw_strech(cr, x+fw-11, 0)
                 cr.rectangle(x+fw, 1, 1, wh-1)
                 cr.rectangle(x+1, 0, fw-1, 1)
             cr.set_source_rgb(0, 0, 0)
@@ -170,6 +183,10 @@ class LayerWidget(Gtk.DrawingArea):
             layer = self.timeline.convert_layer(event.x)
             if event.type == Gdk.EventType._2BUTTON_PRESS:
                 if 0 <= layer < len(self.timeline.data):
+                    for l, i in enumerate(self.layer_box_list):
+                        if i[0] < event.x < i[0]+i[2] and i[1] < event.y < i[1]+i[3]:
+                            self.ani.remove_layer(layer)
+                            return True
                     description = anidialogs.ask_for(self, _("Change description"),
                         _("Description"), self.timeline.data[layer].description)
                     if description:
@@ -181,6 +198,10 @@ class LayerWidget(Gtk.DrawingArea):
                     self.timeline.emit('update')
                 self.move_layer = False
             else:
+                if 0 <= layer < len(self.timeline.data):
+                    for l, i in enumerate(self.layer_box_list):
+                        if i[0] < event.x < i[0]+i[2] and i[1] < event.y < i[1]+i[3]:
+                            return True
                 self.move_layer = layer
                 self.timeline.emit('change_selected_layer', layer)
         return True
