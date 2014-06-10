@@ -190,7 +190,7 @@ class FrameList(dict):
         removed = []
         for n in range(idx, idx + length):
             removed.append(self.pop(n, None))
-        self.change_keys(-length, idx)
+        #self.change_keys(-length, idx)
         return removed
 
     def insert_frames(self, idx, frames):
@@ -204,7 +204,7 @@ class FrameList(dict):
             frames = []
             for f in range(length):
                 frames.append(Frame())
-        self.change_keys(len(frames), idx)
+        #self.change_keys(len(frames), idx)
         for i in range(len(frames)):
             self[idx + i] = frames[i]
 

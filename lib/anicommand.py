@@ -186,30 +186,31 @@ class RemoveCel(Action):
 
 class RemoveFrame(Action):
     display_name = _("Remove Frame")
-    def __init__(self, doc, frame, l_idx=None):
+    def __init__(self, doc, idx, l_idx=None):
         self.doc = doc
         self.timeline = doc.ani.timeline
-        self.frame = frame
+        self.idx = idx
         self.prev_idx = None
         self.layer = l_idx
+        self.frame = self.timeline[self.layer][self.idx]
         
         
     def redo(self):
-        if self.timeline[self.layer][self.frame].cel:
-            layer = self.timeline[self.layer][self.frame].cel
+        if self.frame.cel:
+            layer = self.frame.cel
             self.doc.layers.remove(layer)
             self.prev_idx = self.doc.layer_idx
             self.doc.layer_idx = len(self.doc.layers) - 1
             self._notify_canvas_observers([layer])
 
-        self.timeline[self.layer].remove_frames(self.layer)
+        self.removed = self.timeline[self.layer].remove_frames(self.idx)
         
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
         self._notify_document_observers()
             
     def undo(self):
-        self.timeline[self.layer].insert_frames([self.frame])
+        self.timeline[self.layer].insert_frames(self.idx, self.removed)
         if self.frame.cel:
             self.doc.layers.append(self.frame.cel)
             self.doc.layer_idx = self.prev_idx

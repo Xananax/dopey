@@ -339,6 +339,7 @@ class TimelineWidget(Gtk.DrawingArea):
         self.connect('query-tooltip', self.tooltip)
         self.timeline.connect('update', self.update)
         
+        self.key_box_list = []
         self.strech_box_list = []
         self.strech_frame = False
         self.drag_scroll = False
@@ -375,14 +376,19 @@ class TimelineWidget(Gtk.DrawingArea):
         cr.paint()
         cr.restore()
     
-    def draw_strech(self, cr, x, y, l):
+    def draw_strech(self, cr, x, y, l, key=False):
         cr.rectangle(x, y, 12, 12)
         cr.set_source_rgb(0, 0, 0)
         cr.fill()
         cr.rectangle(x+1, y+1, 10, 10)
-        cr.set_source_rgb(1, .67, .67)
-        cr.fill()
-        self.strech_box_list[l].append((x, y, 12, 12))
+        if key:
+            cr.set_source_rgb(.9, .9, .14)
+            cr.fill()
+            self.key_box_list[l].append((x, y, 12, 12))
+        else:
+            cr.set_source_rgb(1, .67, .67)
+            cr.fill()
+            self.strech_box_list[l].append((x, y, 12, 12))
         
     def do_draw(self, cr):
         # widget size
@@ -398,6 +404,7 @@ class TimelineWidget(Gtk.DrawingArea):
         cr.rectangle(0, self.timeline.data.idx*fh+m, ww, fh+1)
         cr.fill()
         # draw layers
+        self.key_box_list = []
         self.strech_box_list = []
 
         #lines marking seconds
@@ -428,6 +435,7 @@ class TimelineWidget(Gtk.DrawingArea):
 
         for nl, l in enumerate(self.timeline.data):
             self.strech_box_list.append([])
+            self.key_box_list.append([])
             if nl > self.timeline.data.layer_idx:
                 x = (nl - 1) * fw + fwa + 1
             else:
@@ -477,7 +485,8 @@ class TimelineWidget(Gtk.DrawingArea):
                         else:
                             cr.move_to(x + 1, y + th + nt*th)
                             cr.show_text(t)
-                    self.draw_strech(cr, x+fwa-12, y-3, nl)
+                    self.draw_strech(cr, x+fwa-26, y-1, nl, True)
+                    self.draw_strech(cr, x+fwa-12, y-1, nl)
                     cr.fill();
                 else:
                     if nf == self.timeline.data.idx:
@@ -486,12 +495,18 @@ class TimelineWidget(Gtk.DrawingArea):
                         cr.set_source_rgb(0.84, 0.84, 0.84)
                     cr.rectangle(x, y, fw - 1, fh)
                     cr.fill();
-                    #self.draw_mask(cr, self.sh, x, y, fw, fh)
+                    if l[nf].is_key:
+                        cr.set_source_rgb(.95, .95, 0)
+                        cr.rectangle(x, y, fw-1, 3)
+                        cr.rectangle(x, y+fh-3, fw-1, 3)
+                        cr.rectangle(x, y, 3, fh)
+                        cr.rectangle(x+fw-4, y, 3, fh)
+                        cr.fill()
                     cr.rectangle(x, y, fw, 1)
                     cr.rectangle(x, y+fh, fw, 1)
                     cr.set_source_rgb(0, 0, 0)
                     cr.fill()
-                    self.draw_strech(cr, x+fw-12, y-3, nl)
+                    self.draw_strech(cr, x+fw-12, y-1, nl)
         # before layer
         cr.rectangle(0, 0, 1, wh)
         cr.set_source_rgb(0, 0, 0)
@@ -514,6 +529,11 @@ class TimelineWidget(Gtk.DrawingArea):
                         for f, j in enumerate(i):
                             if j[0] < event.x < j[0]+j[2] and j[1] < event.y < j[1]+j[3]:
                                 self.ani.remove_frame(layer, frame)
+                                return True
+                    for l, i in enumerate(self.key_box_list):
+                        for f, j in enumerate(i):
+                            if j[0] < event.x < j[0]+j[2] and j[1] < event.y < j[1]+j[3]:
+                                self.ani.toggle_key()
                                 return True
                     description = anidialogs.ask_for(self, _("Change description"),
                         _("Description"), self.timeline.data[layer][frame].description)
