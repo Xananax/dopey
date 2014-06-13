@@ -308,7 +308,7 @@ class RemoveLayer(Action):
 
         new_idx = self.timeline.layer.cel_at(self.idx)
         if new_idx is not None:
-            self.doc.layer_idx = new_idx
+            self.doc.layer_idx = self.doc.layers.index(new_idx)
         else:
             self.doc.layer_idx = 0
 
