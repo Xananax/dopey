@@ -446,12 +446,24 @@ class Animation(object):
         else:
             self.change_visible_frame(prev_idx, self.timeline.idx)
 
-    def toggle_key(self):
-        frame = self.timeline.get_selected()
+    def toggle_key(self, lidx=None, idx=None):
+        if lidx is None:
+            lidx = self.timeline.layer_idx
+        if idx is None:
+            idx = self.timeline.idx
+        if idx not in self.timeline[lidx]:
+            self.doc.do(anicommand.AddFrame(self.doc, lidx, idx, True))
+        frame = self.timeline[lidx][idx]
         self.doc.do(anicommand.ToggleKey(self.doc, frame))
 
     def toggle_skip_visible(self):
-        frame = self.timeline.get_selected()
+        if lidx is None:
+            lidx = self.timeline.layer_idx
+        if idx is None:
+            idx = self.timeline.idx
+        if idx not in self.timeline[lidx]:
+            self.doc.do(anicommand.AddFrame(self.doc, lidx, idx, True))
+        frame = self.timeline[lidx][idx]
         self.doc.do(anicommand.ToggleSkipVisible(self.doc, frame))
 
     def previous_frame(self, with_cel=False):

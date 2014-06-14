@@ -138,7 +138,8 @@ class ChangeDescription(Action):
 
 class AddFrame(Action):
     display_name = _("Add frame")
-    def __init__(self, doc, l_idx, idx):
+    def __init__(self, doc, l_idx, idx, auto=False):
+        self.automatic_undo = auto
         self.doc = doc
 	self.idx = idx
         self.lidx = l_idx

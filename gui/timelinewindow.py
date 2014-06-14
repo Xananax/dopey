@@ -490,7 +490,7 @@ class TimelineWidget(Gtk.DrawingArea):
         try:
             k = self.key_box_list[l][f]
             if k[0] < x < k[0]+k[2] and k[1] < y < k[1]+k[3]:
-                self.ani.toggle_key()
+                self.ani.toggle_key(l, f)
                 return True
         except:
             return False
