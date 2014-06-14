@@ -487,48 +487,34 @@ class Animation(object):
         if frame is None: frame = self.timeline.idx
         if self.timeline[layer][frame].cel is not None:
             return
-        self.doc.do(anicommand.AddCel(self.doc, layer, frame))
-
-    def remove_cel(self):
-        frame = self.timeline.get_selected()
-        if frame.cel is None:
-            return
-        self.doc.do(anicommand.RemoveCel(self.doc, frame))
-
-    def insert_frames(self, layer=None, frame=None, amount=1):
-        if layer is None: layer = self.timeline.layer_idx
-        if frame is None: frame = self.timeline.idx
-        self.doc.do(anicommand.InsertFrames(self.doc, amount, layer, frame))
+        self.doc.do(anicommand.AddFrame(self.doc, layer, frame))
 
     def remove_frame(self, layer=None, frame=None):
         if layer is None: layer = self.timeline.layer_idx
         if frame is None: frame = self.timeline.idx
         self.doc.do(anicommand.RemoveFrame(self.doc, frame, layer))
 
-    def move_frame(self, frame, amount):
-        self.timeline.insert(frame+amount,self.timeline.pop(frame))
+    def move_frame(self, frame, amount):	#@TODO: add to undo stack
+        self.timeline.layer.insert(frame+amount,self.timeline.layer.pop(frame))
+        self.doc.call_doc_observers()
+
+    def move_layer(self, layer, amount):	#@TODO: add to undo stack
+        self.timeline.insert_layer(layer+amount,self.timeline.pop(layer))
         self.doc.call_doc_observers()
 
     def select(self, idx):
         self.doc.do(anicommand.SelectFrame(self.doc, idx))
 
-    def select_layer(self, idx):		#@TODO: add to undo stack
-        self.timeline.select_layer(idx)
-        self.update_opacities()
-        self.cleared = True
-        self.doc.call_doc_observers()
+    def select_layer(self, idx):
+        self.doc.do(anicommand.SelectAnimationLayer(self.doc, idx))
 
     def previous_layer(self):
-        self.timeline.goto_previous_layer()
-        self.update_opacities()
-        self.cleared = True
-        self.doc.call_doc_observers()
+        if self.timeline.has_previous_layer():
+            self.select_layer(self.timeline.layer_idx - 1)
 
     def next_layer(self):
-        self.timeline.goto_next_layer()
-        self.update_opacities()
-        self.cleared = True
-        self.doc.call_doc_observers()
+        if self.timeline.has_next_layer():
+            self.select_layer(self.timeline.layer_idx + 1)
 
     def add_layer(self, idx=None):
         self.doc.do(anicommand.InsertLayer(self.doc, idx))

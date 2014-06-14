@@ -155,10 +155,10 @@ class LayerWidget(Gtk.DrawingArea):
             if l == sl:
                 return
             while l > sl and sl < len(self.timeline.data) - 1:
-                self.ani.move_frame(sl, 1)
+                self.ani.move_layer(sl, 1)
                 sl += 1
             while l < sl and sl > 0:
-                self.ani.move_frame(sl, -1)
+                self.ani.move_layer(sl, -1)
                 sl -= 1
             self.move_layer = sl
             self.timeline.emit('change_selected_layer', sl)
@@ -175,7 +175,7 @@ class FrameWidget(Gtk.DrawingArea):
         self.app = app
         self.timeline = timeline
 
-        self.set_size_request(30, 600)
+        self.set_size_request(10, 600)
         self.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | 
                         Gdk.EventMask.BUTTON_RELEASE_MASK |
                         Gdk.EventMask.BUTTON1_MOTION_MASK )
@@ -194,8 +194,9 @@ class FrameWidget(Gtk.DrawingArea):
             self.queue_draw()
         
     def do_draw(self, cr):
-        # widget size
-        ww, wh = self.get_allocation().width, self.get_allocation().height
+        # widget size			#@TODO: kinda hackish fix for wrong size
+        ww, wh = self.timeline.scroll_frame.get_allocation().width-9, \
+                 self.get_allocation().height
         # frame size
         fw, fh = self.timeline.frame_width, self.timeline.frame_height
         m = self.timeline.margin_top
@@ -228,7 +229,6 @@ class FrameWidget(Gtk.DrawingArea):
         if div == (1, True):
             div = (int(9 / (fps * fh)) + 1, False)
 
-        print div
         cr.set_font_size(10)
         cr.select_font_face('sans', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         for f, i in enumerate(range(0, wh, fh), 1):
@@ -334,19 +334,19 @@ class TimelineWidget(Gtk.DrawingArea):
             self.set_size_request(w, h)
             self.emit('size_changed', w, h)
     
-    def draw_button(self, cr, x, y, l, f, key=False):
-        cr.rectangle(x, y, 12, 12)
+    def draw_button(self, cr, x, y, l, f, key=False, sz=12):
+        cr.rectangle(x, y, sz, sz)
         cr.set_source_rgb(0, 0, 0)
         cr.fill()
-        cr.rectangle(x+1, y+1, 10, 10)
+        cr.rectangle(x+1, y+1, sz-2, sz-2)
         if key:
             cr.set_source_rgb(.9, .9, .14)
             cr.fill()
-            self.key_box_list[l][f] = (x, y, 12, 12)
+            self.key_box_list[l][f] = (x, y, sz, sz)
         else:
             cr.set_source_rgb(1, .67, .67)
             cr.fill()
-            self.close_box_list[l][f] = (x, y, 12, 12)
+            self.close_box_list[l][f] = (x, y, sz, sz)
         
     def do_draw(self, cr):
         # widget size
@@ -605,7 +605,7 @@ class TimelineTool(Gtk.VBox):
         self.scroll_frame.get_vscrollbar().hide()
         self.scroll_frame.get_hscrollbar().hide()
         self.scroll_frame.add(self.frame_widget)
-        self.scroll_frame.set_min_content_width(30)
+        self.scroll_frame.set_min_content_width(23)
         self.scroll_frame.set_vexpand(True)
         self.timeline_widget.connect('size_changed', self.frame_widget.resize)
         
@@ -672,8 +672,6 @@ class TimelineTool(Gtk.VBox):
         layer_ctrls_table.attach(opacity_lbl, 0, 1, row, row+1, Gtk.FILL)
         layer_ctrls_table.attach(self.opacity_scale, 1, 2, row, row+1, Gtk.FILL|Gtk.EXPAND)
 
-#        layerbuttons_hbox = Gtk.HBox()
-#        layerbuttons_hbox.pack_start(layer_ctrls_table)
         self.opacity_scale.connect('value-changed', self.on_opacity_changed)
         self.layer_mode_combo.connect('changed', self.on_layer_mode_changed)
         self.doc.doc_observers.append(self.update)
@@ -745,14 +743,9 @@ class TimelineTool(Gtk.VBox):
 
         self._update_buttons_sensitive()
         if self.ani.cleared == True:
-            digits = 7*(int(math.log( \
-                        self.get_last()/self.frame_height, \
-                        10))+1)+16
-            self.scroll_frame.set_min_content_width(digits)
-            self.set_frame_height(self.size_adjustment)
-            self.timeline_widget.resize()
-            self.frame_widget.queue_draw()
             self.ani.cleared = False
+            self.update_digits()
+            self.timeline_widget.resize()
 
         self.scroll_to(self.ani.timeline.idx)
         self.emit('update')
@@ -762,10 +755,19 @@ class TimelineTool(Gtk.VBox):
             val = self.size_adjustment.get_value()
             dval = event.get_scroll_deltas()[2] / 2
             self.size_adjustment.set_value(val - dval)
+            self.update_digits()
             return True
 
     def on_scrolled(self, *args):
+        self.update_digits()
         self.timeline_widget.resize()
+
+    def update_digits(self):
+        import math
+        digits = 7*(int(math.log( \
+                    self.get_last()/self.frame_height, \
+                    10))+1)+16
+        self.scroll_frame.set_min_content_width(digits)
 
     def scroll_to(self, idx):
         if idx < 0: idx = 0
