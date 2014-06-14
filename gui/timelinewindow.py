@@ -120,15 +120,22 @@ class LayerWidget(Gtk.DrawingArea):
             cr.set_source_rgb(0, 0, 0)
             cr.fill();
     
+    def get_in_list(self, l, x, y):
+        try:
+            c = self.close_box_list[l]
+            if c[0] < x < c[0]+c[2] and c[1] < y < c[1]+c[3]:
+                self.ani.remove_layer(l)
+                return True
+        except:
+            return False
+    
     def clic(self, widget, event):
         if event.button == Gdk.BUTTON_PRIMARY:
             layer = self.timeline.convert_layer(event.x)
+            if self.get_in_list(layer, event.x, event.y):
+                return True
             if event.type == Gdk.EventType._2BUTTON_PRESS:
                 if 0 <= layer < len(self.timeline.data):
-                    for l, i in enumerate(self.close_box_list):
-                        if i[0] < event.x < i[0]+i[2] and i[1] < event.y < i[1]+i[3]:
-                            self.ani.remove_layer(layer)
-                            return True
                     description = anidialogs.ask_for(self, _("Change description"),
                         _("Description"), self.timeline.data[layer].description)
                     if description:
@@ -334,12 +341,12 @@ class TimelineWidget(Gtk.DrawingArea):
             self.set_size_request(w, h)
             self.emit('size_changed', w, h)
     
-    def draw_button(self, cr, x, y, l, f, key=False, sz=12):
+    def draw_button(self, cr, x, y, l, f, type='close', sz=12):
         cr.rectangle(x, y, sz, sz)
         cr.set_source_rgb(0, 0, 0)
         cr.fill()
         cr.rectangle(x+1, y+1, sz-2, sz-2)
-        if key:
+        if type == 'key':
             cr.set_source_rgb(.9, .9, .14)
             cr.fill()
             self.key_box_list[l][f] = (x, y, sz, sz)
@@ -440,7 +447,7 @@ class TimelineWidget(Gtk.DrawingArea):
                             cr.move_to(x + 1, y + th + nt*th)
                             cr.show_text(t)
                     if fh > 8 or self.timeline.data.idx == nf:
-                        self.draw_button(cr, x+fwa-26, y-1, nl, nf, True)
+                        self.draw_button(cr, x+fwa-26, y-1, nl, nf, 'key')
                         self.draw_button(cr, x+fwa-12, y-1, nl, nf)
                     cr.fill();
                 else:
@@ -473,35 +480,42 @@ class TimelineWidget(Gtk.DrawingArea):
         cr.fill();
     
     def get_in_list(self, l, f, x, y):
-        c = self.close_box_list[l][f]
-        k = self.key_box_list[l][f]
-        if c[0] < x < c[0]+c[2] and c[1] < y < c[1]+c[3]:
-            self.ani.remove_frame(l, f)
-        elif k[0] < x < k[0]+k[2] and k[1] < y < k[1]+k[3]:
-            self.ani.toggle_key()
-        else:
-            description = anidialogs.ask_for(self, _("Change description"),
-                _("Description"), self.timeline.data[l][f].description)
-            if description:
-                self.ani.change_description(description, 
-                                            self.timeline.data[l][f])
-        return True
+        try:
+            c = self.close_box_list[l][f]
+            if c[0] < x < c[0]+c[2] and c[1] < y < c[1]+c[3]:
+                self.ani.remove_frame(l, f)
+                return True
+        except:
+            return False
+        try:
+            k = self.key_box_list[l][f]
+            if k[0] < x < k[0]+k[2] and k[1] < y < k[1]+k[3]:
+                self.ani.toggle_key()
+                return True
+        except:
+            return False
 
     def clic(self, widget, event):
+        self.move_frame = False
         if event.button == Gdk.BUTTON_PRIMARY:
             frame = (int(event.y)-1-self.timeline.margin_top)//self.timeline.frame_height
             layer = self.timeline.convert_layer(event.x)
+            if self.get_in_list(layer, frame, event.x, event.y):
+                return True
             if event.type == Gdk.EventType._2BUTTON_PRESS:
                 if not 0 <= layer < len(self.timeline.data):
                     self.ani.add_layer(len(self.timeline.data))
                     layer = self.timeline.data.layer_idx = len(self.timeline.data) - 1
                 if frame in self.timeline.data[layer]:
-                    return self.get_in_list(layer, frame, event.x, event.y)
+                    description = anidialogs.ask_for(self, _("Change description"),
+                             _("Description"), self.timeline.data[layer][frame].description)
+                    if description:
+                        self.ani.change_description(description, 
+                                                    self.timeline.data[layer][frame])
                 else:
                     self.ani.add_cel(layer, frame)
                 self.resize()
             else:
-                self.move_frame = False
                 if layer < len(self.timeline.data) and frame in self.timeline.data[layer]:
                     self.move_frame = (layer, frame, False)
                 self.timeline.emit('change_current_frame', frame)
