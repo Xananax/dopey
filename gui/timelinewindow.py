@@ -582,12 +582,7 @@ class TimelineTool(Gtk.VBox):
         self.frame_height = 32
         self.margin_top = 6
 
-        self.timeline = self
-
-        self.doc.doc_observers.append(self.update)
-
         self.grid = Gtk.Grid()
-        self.doc.doc_observers.append(self.sort_layers)
 
         self.timeline_widget = TimelineWidget(self, app)
         self.scroll_timeline = Gtk.ScrolledWindow()
@@ -674,7 +669,6 @@ class TimelineTool(Gtk.VBox):
 
         self.opacity_scale.connect('value-changed', self.on_opacity_changed)
         self.layer_mode_combo.connect('changed', self.on_layer_mode_changed)
-        self.doc.doc_observers.append(self.update)
 
 
         # playback controls:
@@ -720,8 +714,10 @@ class TimelineTool(Gtk.VBox):
         self.pack_start(framebuttons_hbox, expand=False)
         self.set_size_request(200, -1)
 
+        self.doc.doc_observers.append(self.update)
+        self.doc.doc_observers.append(self.sort_layers)
+
     def update(self, doc=None):
-        import math
         self.data.cleanup()
 
         current_layer = self.doc.ani.timeline.layer

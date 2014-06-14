@@ -7,7 +7,7 @@
 # (at your option) any later version.
 
 from command import Action, SelectLayer
-import layer
+import layer, timeline
 from gettext import gettext as _
 
 class SelectFrame(Action):
@@ -93,6 +93,7 @@ class ToggleKey(Action):
 
 class ToggleSkipVisible(Action):
     display_name = _("Toggle skip visible")
+    automatic_undo = True
     def __init__(self, doc, frame):
         self.doc = doc
         self.frame = frame
@@ -141,10 +142,11 @@ class AddFrame(Action):
         self.doc = doc
 	self.idx = idx
         self.lidx = l_idx
-        self.timeline = self.doc.ani.timeline
+        self.timeline = doc.ani.timeline
+        self.frame = timeline.Frame()
 
         # Create new layer:
-        layername = self.doc.ani.generate_layername(self.idx, self.lidx, self.timeline[self.lidx][self.idx].description)
+        layername = self.doc.ani.generate_layername(self.idx, self.lidx, self.frame.description)
         self.layer = layer.Layer(name=layername)
         self.layer._surface.observers.append(self.doc.layer_modified_cb)
     
@@ -153,7 +155,8 @@ class AddFrame(Action):
         self.prev_idx = self.doc.layer_idx
         self.doc.layer_idx = len(self.doc.layers) - 1
         
-        self.timeline[self.lidx][self.idx].add_cel(self.layer)
+        self.timeline[self.lidx][self.idx] = self.frame
+        self.frame.add_cel(self.layer)
         self._notify_canvas_observers([self.layer])
         self.doc.ani.update_opacities()
         self._notify_document_observers()
@@ -161,8 +164,7 @@ class AddFrame(Action):
     def undo(self):
         self.doc.layers.remove(self.layer)
         self.doc.layer_idx = self.prev_idx
-        self.timeline[self.lidx][self.idx].remove_cel()
-        self.doc.ani.timeline.layer.cleanup()
+        self.timeline[self.lidx].pop(self.idx)
         self._notify_canvas_observers([self.layer])
         self.doc.ani.update_opacities()
         self._notify_document_observers()
