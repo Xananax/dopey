@@ -567,7 +567,7 @@ class TimelineWidget(Gtk.DrawingArea):
 
 class TimelineTool(Gtk.VBox):
 
-    stock_id = 'mypaint-tool-animation'
+    stock_id = 'mypaint-tool-timeline'
 
     tool_widget_icon_name = "mypaint-tool-timeline"
     tool_widget_title = _("Timeline")
