@@ -733,6 +733,7 @@ class TimelineTool(Gtk.VBox):
         self.doc.doc_observers.append(self.sort_layers)
 
     def update(self, doc=None):
+        self.data = self.ani.timeline
         self.data.cleanup()
 
         current_layer = self.doc.ani.timeline.layer
