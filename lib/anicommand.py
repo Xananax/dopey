@@ -160,6 +160,7 @@ class AddFrame(Action):
         self.frame.add_cel(self.layer)
         self._notify_canvas_observers([self.layer])
         self.doc.ani.update_opacities()
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
     
     def undo(self):
@@ -168,6 +169,7 @@ class AddFrame(Action):
         self.timeline[self.lidx].pop(self.idx)
         self._notify_canvas_observers([self.layer])
         self.doc.ani.update_opacities()
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
 
 
@@ -193,6 +195,7 @@ class RemoveFrame(Action):
         self.removed = self.timeline[self.layer].remove_frames(self.idx)
         
         self.doc.ani.update_opacities()
+        self.doc.ani.sort_layers()
         self.doc.ani.cleared = True
         self._notify_document_observers()
             
@@ -203,6 +206,7 @@ class RemoveFrame(Action):
             self.doc.layer_idx = self.prev_idx
             self._notify_canvas_observers([self.frame.cel])
         self.doc.ani.update_opacities()
+        self.doc.ani.sort_layers()
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
@@ -239,6 +243,7 @@ class PasteCel(Action):
         self.doc.ani.edit_frame = None
 
         self.doc.ani.update_opacities()
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
 
     def undo(self):
@@ -250,6 +255,7 @@ class PasteCel(Action):
             self.doc.layer_idx -= 1
             self._notify_canvas_observers([self.doc.ani.edit_frame.cel])
         self.doc.ani.update_opacities()
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
 
 
@@ -263,6 +269,7 @@ class InsertLayer(Action):
     def redo(self):
         self.timeline.insert_layer(idx=self.idx)
         self.doc.ani.cleared = True
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
 
     def undo(self):
@@ -270,6 +277,7 @@ class InsertLayer(Action):
         if self.timeline.idx == len(self.timeline):
             self.timeline.idx -= 1
         self.doc.ani.cleared = True
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
 
 
@@ -301,6 +309,7 @@ class RemoveLayer(Action):
 
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
             
     def undo(self):
@@ -314,5 +323,6 @@ class RemoveLayer(Action):
 
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
+        self.doc.ani.sort_layers()
         self._notify_document_observers()
 

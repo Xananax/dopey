@@ -253,9 +253,12 @@ class TimeLine(list):
         self.active_cels = dict(DEFAULT_ACTIVE_CELS)
         if nextprev is None:
             nextprev = {}
+        self.nextprev = dict(DEFAULT_NEXTPREV)
         self.setup_opacities(opacities)
         self.setup_active_cels(active_cels)
-        self.nextprev = dict(DEFAULT_NEXTPREV)
+        self.setup_nextprev(nextprev)
+
+    def setup_nextprev(self, nextprev):
         self.nextprev.update(nextprev)
 
     def setup_opacities(self, opacities):

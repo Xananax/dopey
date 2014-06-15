@@ -730,7 +730,6 @@ class TimelineTool(Gtk.VBox):
         self.set_size_request(200, -1)
 
         self.doc.doc_observers.append(self.update)
-        self.doc.doc_observers.append(self.sort_layers)
 
     def update(self, doc=None):
         self.data = self.ani.timeline
@@ -808,9 +807,6 @@ class TimelineTool(Gtk.VBox):
         x, y = hadj.get_value(), vadj.get_value()
         hadj.set_value(x + dx)
         vadj.set_value(y + dy)
-
-    def sort_layers(self, doc=None):
-        self.ani.sort_layers()
 
     def tool_widget_properties(self):
         d = TimelinePropertiesDialog(self, self.app)

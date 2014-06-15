@@ -45,7 +45,7 @@ class Animation(object):
         self.edit_operation = None
         self.edit_frame = None
 
-    def clear_xsheet(self, doc, init=False):
+    def clear_xsheet(self, init=False):
         self.timeline = TimeLine(self.opacities)
         self.timeline.append_layer()
         self.cleared = True
@@ -155,14 +155,12 @@ class Animation(object):
         str_data = self.xsheet_as_str()
         xsheetfile.write(str_data)
 
-    def str_to_xsheet(self, doc, ani_data):
+    def str_to_xsheet(self, ani_data):
         """
         Update TimeLine from animation data.
     
         """
-
         data = json.loads(ani_data)
-
         # first check if it's in the legacy non-descriptive JSON or new XDNA format
         if type(data) is dict and data['XDNA']:
             x = self.xdna
@@ -170,7 +168,7 @@ class Animation(object):
             raster_frames = data['xsheet']['raster_frame_lists']
 
             self.timeline = TimeLine(self.opacities)
-            self.timeline.fps = data['xsheet']['framerate']
+            self.timeline.fps = int(data['xsheet']['framerate'])
             self.cleared = True
 
 
@@ -185,12 +183,10 @@ class Animation(object):
                     self.timeline[j].opacity = raster_frames[j]['opacity']
                     self.timeline[j].locked = raster_frames[j]['locked']
                     self.timeline[j].composite = raster_frames[j]['composite']
-                    for ui in raster_frames[j]:
-                        try:
-                            i = int(ui)
-                        except ValueError:
+                    for i in raster_frames[j]:
+                        if type(i) is not int:
                             continue
-                        d = raster_frames[j][ui]
+                        d = raster_frames[j][i]
                         f = self.timeline[j][i]
                         if d['idx'] is not None:
                             if d['idx'] < len(self.doc.layers):
@@ -245,13 +241,13 @@ class Animation(object):
                 self.timeline[0][i].cel = cel
             self.timeline.cleanup()
 
-    def _read_xsheet(self, doc, xsheetfile):
+    def _read_xsheet(self, xsheetfile):
         """
         Update FrameList from file.
     
         """
         ani_data = xsheetfile.read()
-        self.str_to_xsheet(doc, ani_data)
+        self.str_to_xsheet(ani_data)
     
     def save_xsheet(self, filename):
         root, ext = os.path.splitext(filename)
@@ -259,15 +255,15 @@ class Animation(object):
         xsheetfile = open(xsheet_fn, 'w')
         self._write_xsheet(xsheetfile)
     
-    def load_xsheet(self, doc, filename):
+    def load_xsheet(self, filename):
         root, ext = os.path.splitext(filename)
         xsheet_fn = root + '.xsheet'
         try:
             xsheetfile = open(xsheet_fn, 'r')
         except IOError:
-            self.clear_xsheet(doc)
+            self.clear_xsheet()
         else:
-            self._read_xsheet(doc, xsheetfile)
+            self._read_xsheet(xsheetfile)
     
     def save_png(self, filename, **kwargs):
         prefix, ext = os.path.splitext(filename)
@@ -478,26 +474,43 @@ class Animation(object):
         frame = self.timeline[lidx][idx]
         self.doc.do(anicommand.ToggleSkipVisible(self.doc, frame))
 
+#@TODO: frame movements done through command stack?
     def previous_frame(self, with_cel=False):
         new = self.timeline.goto_previous(with_cel)
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        if cel is not None:
+            layer_idx = self.doc.layers.index(cel)
+            self.doc.layer_idx = layer_idx
         self.update_opacities()
         if new: self.cleared = True
         self.doc.call_doc_observers()
 
     def next_frame(self, with_cel=False):
         new = self.timeline.goto_next(with_cel)
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        if cel is not None:
+            layer_idx = self.doc.layers.index(cel)
+            self.doc.layer_idx = layer_idx
         self.update_opacities()
         if new: self.cleared = True
         self.doc.call_doc_observers()
 
     def previous_keyframe(self):
         new = self.timeline.goto_previous_key()
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        if cel is not None:
+            layer_idx = self.doc.layers.index(cel)
+            self.doc.layer_idx = layer_idx
         self.update_opacities()
         if new: self.cleared = True
         self.doc.call_doc_observers()
 
     def next_keyframe(self):
         new = self.timeline.goto_next_key()
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        if cel is not None:
+            layer_idx = self.doc.layers.index(cel)
+            self.doc.layer_idx = layer_idx
         self.update_opacities()
         if new: self.cleared = True
         self.doc.call_doc_observers()
