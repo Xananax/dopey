@@ -44,7 +44,7 @@ class LayerWidget(Gtk.DrawingArea):
     
     def tooltip(self, item, x, y, keyboard_mode, tooltip):
         idx = self.timeline.convert_layer(x)
-        if not 0 <= idx < len(self.timeline.data): return False
+        if not 0 <= idx < len(self.close_box_list): return False
         c = self.close_box_list[idx]
         if c[0] < x < c[0]+c[2] and c[1] < y < c[1]+c[3]:
             text = _("Remove Layer")
@@ -831,8 +831,10 @@ class TimelineTool(Gtk.VBox):
         self.send_scroll(x, y)
         
     def convert_layer(self, x):
-        if x > (self.data.layer_idx + 1) * self.frame_width:
+        if x > (self.data.layer_idx) * self.frame_width + self.frame_width_active:
             return int((x - self.frame_width_active + self.frame_width)/self.frame_width)
+        elif x > (self.data.layer_idx + 1) * self.frame_width:
+            return self.data.layer_idx
         else:
             return int((x)/self.frame_width)
 
