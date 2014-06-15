@@ -183,10 +183,12 @@ class Animation(object):
                     self.timeline[j].opacity = raster_frames[j]['opacity']
                     self.timeline[j].locked = raster_frames[j]['locked']
                     self.timeline[j].composite = raster_frames[j]['composite']
-                    for i in raster_frames[j]:
-                        if type(i) is not int:
+                    for ui in raster_frames[j]:
+                        try:
+                            i = int(ui)
+                        except ValueError:
                             continue
-                        d = raster_frames[j][i]
+                        d = raster_frames[j][ui]
                         f = self.timeline[j][i]
                         if d['idx'] is not None:
                             if d['idx'] < len(self.doc.layers):
