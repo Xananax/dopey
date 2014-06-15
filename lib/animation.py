@@ -193,7 +193,11 @@ class Animation(object):
                         d = raster_frames[j][ui]
                         f = self.timeline[j][i]
                         if d['idx'] is not None:
-                            cel = self.doc.layers[d['idx']]
+                            if d['idx'] in self.doc.layers:
+                                cel = self.doc.layers[d['idx']]
+                            else:
+                                cel = Layer()
+                                self.doc.layers.append(cel)
                         else:
                             cel = None
                         f.is_key = d['is_key']
@@ -207,7 +211,11 @@ class Animation(object):
                     self.timeline.append_layer()
                     for i, d in enumerate(raster_frames[j]):
                         if d['idx'] is not None:
-                            cel = self.doc.layers[d['idx']]
+                            if d['idx'] in self.doc.layers:
+                                cel = self.doc.layers[d['idx']]
+                            else:
+                                cel = Layer()
+                                self.doc.layers.append(cel)
                         else:
                             cel = None
                         self.timeline[j][i].is_key = d['is_key']
@@ -225,7 +233,11 @@ class Animation(object):
             for i, d in enumerate(data):
                 is_key, description, layer_idx = d
                 if layer_idx is not None:
-                    cel = self.doc.layers[layer_idx]
+                    if layer_idx in self.doc.layers:
+                        cel = self.doc.layers[layer_idx]
+                    else:
+                        cel = Layer()
+                        self.doc.layers.append(cel)
                 else:
                     cel = None
                 self.timeline[0][i].is_key = is_key

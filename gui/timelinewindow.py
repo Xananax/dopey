@@ -59,14 +59,16 @@ class LayerWidget(Gtk.DrawingArea):
             self.set_size_request(w, wh)
             self.queue_draw()
     
-    def draw_button(self, cr, x, y):
-        cr.rectangle(x, y, 12, 12)
+    def draw_button(self, cr, x, y, type='close', sz=12):
+        cr.rectangle(x, y, sz, sz)
         cr.set_source_rgb(0, 0, 0)
         cr.fill()
-        cr.rectangle(x+1, y+1, 10, 10)
+        cr.rectangle(x+1, y+1, sz-2, sz-2)
+        
         cr.set_source_rgb(1, .67, .67)
+        self.close_box_list.append((x, y, sz, sz))
+
         cr.fill()
-        self.close_box_list.append((x, y, 12, 12))
         
     def do_draw(self, cr):
         # widget size
@@ -348,12 +350,11 @@ class TimelineWidget(Gtk.DrawingArea):
         cr.rectangle(x+1, y+1, sz-2, sz-2)
         if type == 'key':
             cr.set_source_rgb(.9, .9, .14)
-            cr.fill()
             self.key_box_list[l][f] = (x, y, sz, sz)
         else:
             cr.set_source_rgb(1, .67, .67)
-            cr.fill()
             self.close_box_list[l][f] = (x, y, sz, sz)
+        cr.fill()
         
     def do_draw(self, cr):
         # widget size
