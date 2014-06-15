@@ -762,6 +762,11 @@ class TimelineTool(Gtk.VBox):
         self.scroll_to(self.ani.timeline.idx)
         self.emit('update')
 
+        if not self.is_playing and self.ani.player_state == "play":
+            use_lightbox = self.app.preferences.get("xsheet.play_lightbox",
+                                                    False)
+            self._play_animation(use_lightbox=use_lightbox)
+
     def on_scroll_zoom(self, window, event, *args):
         if event.get_state() != 0:
             val = self.size_adjustment.get_value()
