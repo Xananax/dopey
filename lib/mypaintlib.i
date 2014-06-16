@@ -1,7 +1,10 @@
 %module mypaintlib
+
 %{
 #include "mypaintlib.hpp"
 %}
+
+%include "common.hpp"
 
 %include "std_vector.i"
 
@@ -19,10 +22,6 @@ typedef struct { int x, y, w, h; } Rect;
 %include "python_brush.hpp"
 %include "tiledsurface.hpp"
 
-#ifdef HAVE_GEGL
-%include "geglbackedsurface.hpp"
-#endif
-
 %include "pixops.hpp"
 %include "colorring.hpp"
 %include "colorchanger_wash.hpp"
@@ -31,8 +30,7 @@ typedef struct { int x, y, w, h; } Rect;
 %include "fill.hpp"
 %include "eventhack.hpp"
 
-//from "gdkpixbuf2numpy.hpp"
-PyObject * gdkpixbuf_get_pixels_array(PyObject *pixbuf_pyobject);
+%include "gdkpixbuf2numpy.hpp"
 
 %init %{
 import_array();

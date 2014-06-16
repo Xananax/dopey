@@ -10,6 +10,8 @@
 """
 
 import os.path
+from logging import getLogger
+logger = getLogger(__name__)
 
 from gettext import gettext as _
 import gtk
@@ -109,14 +111,21 @@ class PreferencesWindow (windowing.Dialog):
         zoom_combo = self._builder.get_object("default_zoom_combobox")
         zoom_combo.set_active_id(zoom_idcolstr)
 
-        # Hide whatevs in fullscreen
-        for name in ["menubar", "toolbar", "subwindows"]:
-            checkbutton_name = "fullscreen_hide_%s_checkbutton" % name
-            checkbutton = self._builder.get_object(checkbutton_name)
-            if checkbutton:
-                setting_name = "ui.hide_%s_in_fullscreen" % name
-                setting = p.get(setting_name, True)
-                checkbutton.set_active(setting)
+        # Toolbar icon size radios
+        size = str(p.get("ui.toolbar_icon_size", "large")).lower()
+        for size_name in ["small", "large"]:
+            if size_name != size:
+                continue
+            radio_name = "toolbar_icon_size_%s_radio" % (size,)
+            radio = self._builder.get_object(radio_name)
+            radio.set_active(True)
+            logger.debug("Set %r active", radio_name)
+            break
+
+        # Dark theme
+        dark = bool(p.get("ui.dark_theme_variant", True))
+        dark_checkbutton = self._builder.get_object("dark_theme_checkbutton")
+        dark_checkbutton.set_active(dark)
 
         # High-quality zoom
         hq_zoom_checkbutton = self._builder.get_object("hq_zoom_checkbutton")
@@ -177,19 +186,21 @@ class PreferencesWindow (windowing.Dialog):
         self.app.preferences['view.default_zoom'] = zoom
 
 
-    def fullscreen_hide_menubar_checkbutton_toggled_cb(self, widget):
-        hide = bool(widget.get_active())
-        self.app.preferences['ui.hide_menubar_in_fullscreen'] = hide
+    def toolbar_icon_size_small_toggled_cb(self, radio):
+        if not radio.get_active():
+            return
+        self.app.preferences["ui.toolbar_icon_size"] = "small"
 
 
-    def fullscreen_hide_toolbar_checkbutton_toggled_cb(self, widget):
-        hide = bool(widget.get_active())
-        self.app.preferences['ui.hide_toolbar_in_fullscreen'] = hide
+    def toolbar_icon_size_large_toggled_cb(self, radio):
+        if not radio.get_active():
+            return
+        self.app.preferences["ui.toolbar_icon_size"] = "large"
 
 
-    def fullscreen_hide_subwindows_checkbutton_toggled_cb(self, widget):
-        hide = bool(widget.get_active())
-        self.app.preferences['ui.hide_subwindows_in_fullscreen'] = hide
+    def dark_theme_toggled_cb(self, checkbut):
+        dark = bool(checkbut.get_active())
+        self.app.preferences["ui.dark_theme_variant"] = dark
 
 
     def hq_zoom_checkbutton_toggled_cb(self, button):

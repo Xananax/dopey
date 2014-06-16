@@ -9,6 +9,8 @@
 import sys
 import contextlib
 import numpy
+from logging import getLogger
+logger = getLogger(__name__)
 
 from gi.repository import GdkPixbuf
 
@@ -113,9 +115,20 @@ class Surface (object):
 TILES_PER_CALLBACK = 256
 
 def render_as_pixbuf(surface, *rect, **kwargs):
-    alpha = kwargs.get('alpha', False)
-    mipmap_level = kwargs.get('mipmap_level', 0)
-    feedback_cb = kwargs.get('feedback_cb', None)
+    """Renders a surface within a given rectangle as a GdkPixbuf
+
+    :param surface: Any Surface-like object with a ``blit_tile_into()`` method
+    :param *rect: x, y, w, h positional args defining the render rectangle
+    :param **kwargs: Keyword args are passed to ``surface.blit_tile_into()``
+    :rtype: GdkPixbuf
+
+    The keyword args ``alpha``, ``mipmap_level``, and ``feedback_cb`` are
+    consumed here and removed from `**kwargs` before it is passed to the
+    Surface's `blit_tile_into()`.
+    """
+    alpha = kwargs.pop('alpha', False)
+    mipmap_level = kwargs.pop('mipmap_level', 0)
+    feedback_cb = kwargs.pop('feedback_cb', None)
     if not rect:
         rect = surface.get_bbox()
     x, y, w, h, = rect
@@ -123,16 +136,23 @@ def render_as_pixbuf(surface, *rect, **kwargs):
     tn = 0
     for tx, ty in s.get_tiles():
         with s.tile_request(tx, ty, readonly=False) as dst:
-            surface.blit_tile_into(dst, alpha, tx, ty, mipmap_level=mipmap_level)
+            surface.blit_tile_into(dst, alpha, tx, ty,
+                                   mipmap_level=mipmap_level,
+                                   **kwargs)
             if feedback_cb and tn % TILES_PER_CALLBACK == 0:
                 feedback_cb()
             tn += 1
     return s.pixbuf
 
 def save_as_png(surface, filename, *rect, **kwargs):
-    alpha = kwargs['alpha']
-    feedback_cb = kwargs.get('feedback_cb', None)
-    write_legacy_png = kwargs.get("write_legacy_png", True)
+    """Saves a surface to a file in PNG format"""
+    # TODO: Document keyword params and their meanings, mentioning that
+    # TODO:  some are processed and removed here, and that others are
+    # TODO:  passed to blit_tile_into().
+    alpha = kwargs.pop('alpha', False)
+    feedback_cb = kwargs.pop('feedback_cb', None)
+    write_legacy_png = kwargs.pop("write_legacy_png", True)
+    single_tile_pattern = kwargs.pop("single_tile_pattern", False)
     if not rect:
         rect = surface.get_bbox()
     x, y, w, h = rect
@@ -158,8 +178,9 @@ def save_as_png(surface, filename, *rect, **kwargs):
         feedback_counter = 0
         for ty in range(render_ty, render_ty+render_th):
             skip_rendering = False
-            if kwargs.get('single_tile_pattern', False):
-                # optimization for simple background patterns (e.g. solid color)
+            if single_tile_pattern:
+                # optimization for simple background patterns
+                # e.g. solid color
                 if ty != first_row:
                     skip_rendering = True
 
@@ -167,8 +188,13 @@ def save_as_png(surface, filename, *rect, **kwargs):
                 # render one tile
                 dst = arr[:,tx_rel*N:(tx_rel+1)*N,:]
                 if not skip_rendering:
-                    surface.blit_tile_into(dst, alpha, render_tx+tx_rel, ty)
-
+                    tx = render_tx + tx_rel
+                    try:
+                        surface.blit_tile_into(dst, alpha, tx, ty, **kwargs)
+                    except Exception, ex:
+                        logger.exception("Failed to blit tile %r of %r",
+                                         (tx, ty), surface)
+                        mypaintlib.tile_clear(dst)
                 if feedback_cb and feedback_counter % TILES_PER_CALLBACK == 0:
                     feedback_cb()
                 feedback_counter += 1

@@ -12,6 +12,12 @@ import gi
 from gi.repository import Gtk
 
 
+# Exact icon sizes
+
+ICON_SIZE_LARGE = Gtk.IconSize.LARGE_TOOLBAR   # 24x24, the docs promise
+ICON_SIZE_SMALL = Gtk.IconSize.SMALL_TOOLBAR   # 16x16
+
+
 # Spacing constants
 
 SPACING_CRAMPED = 3    # for use in dockables only
@@ -20,17 +26,27 @@ SPACING = 2 * SPACING_TIGHT
 SPACING_LOOSE = 3*SPACING_TIGHT
 
 
-def borderless_button(stock_id=None, size=Gtk.IconSize.BUTTON, tooltip=None):
+def borderless_button(stock_id=None, size=ICON_SIZE_SMALL,
+                      tooltip=None, action=None):
     button = Gtk.Button()
     if stock_id is not None:
         image = Gtk.Image()
         image.set_from_stock(stock_id, size)
         button.add(image)
+    elif action is not None:
+        button.set_related_action(action)
+        if button.get_child() is not None:
+            button.remove(button.get_child())
+        img = action.create_icon(size)
+        img.set_padding(4, 4)
+        button.add(img)
     button.set_relief(Gtk.ReliefStyle.NONE)
     button.set_can_default(False)
     button.set_can_focus(False)
     if tooltip is not None:
         button.set_tooltip_text(tooltip)
+    elif action is not None:
+        button.set_tooltip_text(action.get_tooltip())
     cssprov = Gtk.CssProvider()
     cssprov.load_from_data("GtkButton { padding: 0px; }")
     style = button.get_style_context()
@@ -62,6 +78,26 @@ def find_widgets(widget, predicate):
             for w2 in w.get_children():
                 queue.append(w2)
     return found
+
+def inline_toolbar(app, tool_defs):
+    """Builds a styled inline toolbar"""
+    bar = Gtk.Toolbar()
+    bar.set_style(Gtk.ToolbarStyle.ICONS)
+    bar.set_icon_size(ICON_SIZE_SMALL)
+    styles = bar.get_style_context()
+    styles.add_class(Gtk.STYLE_CLASS_INLINE_TOOLBAR)
+    for action_name, override_icon in tool_defs:
+        action = app.find_action(action_name)
+        toolitem = Gtk.ToolButton()
+        toolitem.set_related_action(action)
+        if override_icon:
+            toolitem.set_icon_name(override_icon)
+        bar.insert(toolitem, -1)
+        bar.child_set_property(toolitem, "expand", True)
+        bar.child_set_property(toolitem, "homogeneous", True)
+    bar.set_vexpand(False)
+    bar.set_hexpand(True)
+    return bar
 
 
 class MenuOnlyToolButton (Gtk.MenuToolButton):

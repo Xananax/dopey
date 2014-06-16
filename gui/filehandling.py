@@ -20,6 +20,7 @@ from gettext import ngettext
 from lib import document, helpers, tiledsurface
 import drawwindow
 import gtk2compat
+from lib import mypaintlib
 
 SAVE_FORMAT_ANY = 0
 SAVE_FORMAT_ORA = 1
@@ -59,15 +60,10 @@ class FileHandler(object):
 
         ag = app.builder.get_object('FileActions')
 
-        ra = gtk.RecentAction('OpenRecent', _('Open Recent'), _('Open Recent files'), None)
-        ra.set_show_tips(True)
-        ra.set_show_numbers(True)
         rf = gtk.RecentFilter()
         rf.add_application('mypaint')
+        ra = app.find_action("OpenRecent")
         ra.add_filter(rf)
-        ra.set_sort_type(gtk.RECENT_SORT_MRU)
-        ra.connect('item-activated', self.open_recent_cb)
-        ag.add_action(ra)
 
         for action in ag.list_actions():
             self.app.kbm.takeover_action(action)
@@ -172,23 +168,41 @@ class FileHandler(object):
                 if ext is not None:
                     dialog_set_filename(dialog, filename+ext)
 
-    def confirm_destructive_action(self, title=_('Confirm'), question=_('Really continue?')):
-        self.doc.model.split_stroke() # finish stroke in progress
+    def confirm_destructive_action(self, title=_('Confirm'),
+                                   question=_('Really continue?')):
+        """Asks the user to confirm an action that might lose work
+
+        :param title: Dialog title
+        :param question: Whestion to ask the user
+        :rtype bool:
+        :returns: true if the user chose to destroy their work
+
+        This method doesn't bother asking if there are fewer than a handful of
+        seconds of unsaved work. By default, that's 1 second, but the
+        build-time and runtime debugging flags make this period longer to allow
+        faster develop and test cycles.
+        """
+        self.doc.model.flush_updates()
         t = self.doc.model.unsaved_painting_time
-        # enough changes to bother asking? (useful for fast develop-and-test)
-        if t < 8: # (used to be 30, see https://gna.org/bugs/?17955)
+
+        t_bother = 1
+        if mypaintlib.heavy_debug:
+            t_bother += 7
+        if os.environ.get("MYPAINT_DEBUG", False):
+            t_bother += 7
+        # This used to be 30, but see https://gna.org/bugs/?17955
+        # Then 8 by default, but Twitter users hate that too.
+        logger.debug("Destructive action don't-bother period is %ds", t_bother)
+        if t < t_bother:
             return True
 
+        #TRANS: I'm assuming that abbreviated time periods don't need ngettext()
+        t_mins = int(round(t/60))
+        t_secs = int(round(t))
         if t > 120:
-            t = int(round(t/60))
-            t = ngettext('This will discard %d minute of unsaved painting.',
-                         'This will discard %d minutes of unsaved painting.',
-                         t) % t
+            t = _("This will discard %dm%ds of unsaved painting") % (t_mins, t_secs)
         else:
-            t = int(round(t))
-            t = ngettext('This will discard %d second of unsaved painting.',
-                         'This will discard %d seconds of unsaved painting.',
-                         t) % t
+            t = _("This will discard %ds of unsaved painting") % (t_secs,)
         d = gtk.Dialog(title, self.app.drawWindow, gtk.DIALOG_MODAL)
 
         b = d.add_button(gtk.STOCK_DISCARD, gtk.RESPONSE_OK)
@@ -218,7 +232,8 @@ class FileHandler(object):
         # Match scratchpad to canvas background
         # TODO make this into a preference
         if self.app.scratchpad_doc:
-            self.app.scratchpad_doc.model.set_background(self.doc.model.background)
+            bg_layer = self.doc.model.layer_stack.background_layer
+            self.app.scratchpad_doc.model.set_background(bg_layer)
         self.filename = None
         self.set_recent_items()
         self.app.doc.reset_view(True, True, True)
@@ -244,9 +259,16 @@ class FileHandler(object):
             logger.info('Loaded from %r', self.filename)
             self.app.doc.reset_view(True, True, True)
             # try to restore the last used brush and color
-            si = self.doc.model.layer.get_last_stroke_info()
-            if si:
-                self.doc.restore_brush_from_stroke_info(si)
+            layers = self.doc.model.layer_stack
+            search_layers = []
+            if layers.current is not None:
+                search_layers.append(layers.current)
+            search_layers.extend(layers.deepiter())
+            for layer in search_layers:
+                si = layer.get_last_stroke_info()
+                if si:
+                    self.doc.restore_brush_from_stroke_info(si)
+                    break
 
     def open_scratchpad(self, filename):
         try:
@@ -284,7 +306,8 @@ class FileHandler(object):
             else:
                 recent_mgr.add_full(uri, recent_data)
         if not thumbnail_pixbuf:
-            thumbnail_pixbuf = self.doc.model.render_thumbnail()
+            options["background"] = not options.get("alpha", False)
+            thumbnail_pixbuf = self.doc.model.render_thumbnail(**options)
         helpers.freedesktop_thumbnail(filename, thumbnail_pixbuf)
 
     @drawwindow.with_wait_cursor

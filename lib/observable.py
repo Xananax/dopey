@@ -93,10 +93,27 @@ class observable (object):
       Obsr: 6, 2
       8
 
+    You can remove bound methods and static functions using in-place notation too,
+    and test for their presence using "in":
+
+      >>> fn = lambda t, a: a+1
+      >>> tester.foo += fn
+      >>> fn in tester.foo
+      True
+      >>> obsr.obs in tester.foo
+      True
+      >>> tester.foo -= obsr.obs
+      >>> tester.foo -= fn
+      >>> fn in tester.foo
+      False
+      >>> obsr.obs in tester.foo
+      False
+
     If you remove the last strong ref to such an observer, the observable
     method cleans up its internal weakref to it without any fuss the next time
     it's called:
 
+      >>> tester.foo += obsr.obs
       >>> del obsr
       >>> tester.foo(6, 2)
       8
@@ -110,7 +127,6 @@ class observable (object):
     observe.  It's a natural style that's also a recipe for an accidental
     circular reference chain, so special-casing observables for bound methods
     makes sense.
-
     """
 
 
@@ -139,53 +155,170 @@ class observable (object):
         # For second and subsequent calls, use a cache stored in the observable
         # object using this class's name mangling.
         try:
-            return instance.__wrappers[self.func]
+            wrappers_dict = instance.__wrappers
         except AttributeError:
-            instance.__wrappers = {}
-        except KeyError:
-            pass
-        wrapper = observable._MethodWithObservers(instance, self.func)
-        instance.__wrappers[self.func] = wrapper
+            wrappers_dict = dict()
+            instance.__wrappers = wrappers_dict
+        wrapper = wrappers_dict.get(self.func)
+        if wrapper is None:
+            wrapper = MethodWithObservers(instance, self.func)
+            wrappers_dict[self.func] = wrapper
+        elif wrapper.instance_weakref() is not instance:
+            # Okay, change of identity. Happens with the standard copy().
+            self._update_observers(instance)
+            wrappers_dict = instance.__wrappers
+            old_wrapper = wrapper
+            wrapper = wrappers_dict.get(self.func)
+            assert wrapper is not old_wrapper
+            assert wrapper.instance_weakref() == instance
+        assert callable(wrapper)
         return wrapper
 
 
-    class _MethodWithObservers (object):
-        """Calls the decorated method, then its observers."""
+    def __set__(self, obj, value):
+        """Ignored (only defined to create a data descriptor)
 
-        def __init__(self, instance, func):
-            """Constructed on demand, when the @observable method is looked up.
+        Without this, a shallow copy() of an object with this descriptor
+        results in an entry in the class dict which shadows any non-data
+        descriptor with the same name.
+        """
+        pass
 
-            :param instance: The object with the @observable method.
-            :param func: the function being wrapped.
 
-            """
-            super(observable._MethodWithObservers, self).__init__()
-            self.observers = []
-            self.func = func
-            self.instance_weakref = weakref.ref(instance)
-            self.__name__ = func.__name__
-            self.__doc__ = func.__doc__
+    @classmethod
+    def _update_observers(cls, instance):
+        """Internal: required updates after observable instances are copied
 
-        def __call__(self, *args, **kwargs):
-            """Call the wrapped function, and call/manage its observers."""
-            observed = self.instance_weakref()
-            result = self.func(observed, *args, **kwargs)
-            for observer in self.observers[:]:
-                try:
-                    observer(observed, *args, **kwargs)
-                except _BoundObserverMethod._ReferenceError, ex:
-                    logger.debug('Removing %r' % (observer,))
-                    self.observers.remove(observer)
-            del observed
+        :param instance: The object to update
+
+        This is called on the first access via a descriptor on the copy, and
+        replaces the private __wrappers dict with one whose values refer back
+        to the copy, not the original.
+
+        Given an observer function that requires a particular identity for the
+        object being observed,
+
+          >>> class ListMunger (object):
+          ...     @observable
+          ...     def append_sum(self, items):
+          ...         items.append(sum(items))
+          >>> m1 = ListMunger()
+          >>> class ListMungerExtras (object):
+          ...     def bump_last(self, munger, items):
+          ...         if munger is m1: items.append("invoked on m1")
+          ...         else:            items.append("not invoked on m1")
+          >>> mx = ListMungerExtras()
+          >>> m1.append_sum += mx.bump_last
+          >>> nums = [1, 1, 2]; m1.append_sum(nums); nums
+          [1, 1, 2, 4, 'invoked on m1']
+
+        this hack allows both deep and shallow copies to work as expected.
+
+          >>> from copy import copy, deepcopy
+          >>> m2 = deepcopy(m1)
+          >>> m1.append_sum is m2.append_sum
+          False
+          >>> nums = [0, 1, 2]; m2.append_sum(nums); nums
+          [0, 1, 2, 3, 'not invoked on m1']
+
+          >>> m3 = copy(m1)
+          >>> m1.append_sum is m3.append_sum
+          False
+          >>> nums = [3, 2, 1]; m3.append_sum(nums); nums
+          [3, 2, 1, 6, 'not invoked on m1']
+
+        """
+        logger.debug("Updating wrappers for %r", instance)
+        updated_wrappers = {}
+        for func, old_wrapper in instance.__wrappers.items():
+            new_wrapper = MethodWithObservers(instance, func)
+            new_wrapper.observers = old_wrapper.observers[:]
+            updated_wrappers[func] = new_wrapper
+        instance.__wrappers = updated_wrappers
+
+
+class MethodWithObservers (object):
+    """Callable wrapper: calls the decorated method, then its observers
+
+    This is what a __get__ on the observed object's @observable descriptor
+    actually returns. Instances are stashed in the ``_<mangling>_wrappers``
+    member of the observed object itself. Each `MethodWithObservers` instance
+    is callable, and when called invokes all the registered observers in
+    turn.
+    """
+
+    def __init__(self, instance, func):
+        """Constructed on demand, when the @observable method is looked up.
+
+        :param instance: The object with the @observable method.
+        :param func: the function being wrapped.
+
+        """
+        super(MethodWithObservers, self).__init__()
+        self.observers = []
+        self.func = func
+        self.instance_weakref = weakref.ref(instance)
+        self.calling_observers = False
+        self.__name__ = func.__name__
+        self.__doc__ = func.__doc__
+        self._func_repr = _method_repr(instance=instance, func=func)
+
+    def __call__(self, *args, **kwargs):
+        """Call the wrapped function, and call/manage its observers
+
+        Those registered observers which are `BoundObserverMethod`s signal to
+        be removed when they realize their underlying instance has been
+        garbage collected by raising an internal exception, which is caught
+        here and handled. Observers which do this are removed (and logged at
+        priority `logging.DEBUG`).
+
+        Observers which are plain callables are assumed to be static, and
+        don't get removed.
+        """
+        observed = self.instance_weakref()
+
+        result = self.func(observed, *args, **kwargs)
+        if self.calling_observers:
+            logger.debug("Recursive call to %r detected and skipped",
+                         self)
             return result
+        self.calling_observers = True
+        for observer in self.observers[:]:
+            try:
+                observer(observed, *args, **kwargs)
+            except BoundObserverMethod._ReferenceError as ex:
+                logger.debug('Removing %r' % (observer,))
+                self.observers.remove(observer)
+        del observed
+        self.calling_observers = False
+        return result
 
-        def __iadd__(self, observer):
-            self.observers.append(_wrap_observer(observer))
-            return self
+    def __iadd__(self, observer):
+        """Registers an observer with the method to be invoked after it
 
-        def __isub__(self, observer):
-            self.observers.remove(_wrap_observer(observer))
-            return self
+        :param observer: The method or function to register
+        :type observer: callable
+
+        The `observer` parameter can be a bound method or any other sort of
+        callable. Bound methods are wrapped in a BoundObserverMethod object
+        internally, to avoid keeping a hard reference to the object tthe
+        method is bound to.
+        """
+        self.observers.append(_wrap_observer(observer))
+        return self
+
+    def __isub__(self, observer):
+        """Deregisters an observer"""
+        self.observers.remove(_wrap_observer(observer))
+        return self
+
+    def __iter__(self):
+        """Iterate over the list of observers"""
+        return iter(self.observers)
+
+    def __repr__(self):
+        """Pretty-printing"""
+        return ("<MethodWithObservers %s>" % (self._func_repr))
 
 
 class event (observable):
@@ -230,9 +363,9 @@ class event (observable):
 
 
 def _wrap_observer(observer):
-    """Factory function for the observers in a _BoundObserverMethod"""
+    """Factory function for the observers in a BoundObserverMethod"""
     if _is_bound_method(observer):
-        return _BoundObserverMethod(observer)
+        return BoundObserverMethod(observer)
     else:
         return observer
 
@@ -247,60 +380,112 @@ def _is_bound_method(func):
     return False
 
 
-class _BoundObserverMethod (object):
+def _method_repr(bound=None, instance=None, func=None):
+    """Terse, useful, hopefully permanent string repr() for a method
+
+    Names only, given that object repr()s may change over time and this
+    is cached inside some internal objects.
+    """
+    if bound is not None:
+        assert(_is_bound_method(bound))
+        func = bound.__func__
+        instance = bound.__self__
+    funcname = func.__name__
+    clsname = instance.__class__.__name__
+    modname = instance.__class__.__module__
+    return "%s.%s.%s" % (modname, clsname, funcname)
+
+
+class BoundObserverMethod (object):
     """Wrapper for observer callbacks which are bound methods of some object.
 
     To allow short-lived objects to observe long-lived objects with bound
     methods and still be gc'able, we need weakrefs.  However it's not possible
     to take a weakref to a bound method and have that be the only thing
-    referring to it.  Therefore, wrapp it up as a weakref to the object the
+    referring to it.  Therefore, wrap it up as a weakref to the object the
     method is bound to (which can then die naturally), and its implementing
     function (which is always a staticly allocated thing belonging to the class
     definition: those are eternal and we don't care about them).
 
     """
 
-    class _ReferenceError (weakref.ReferenceError):
-        """Raised when calling if the observer object is now dead."""
+    class _ReferenceError (ReferenceError):
+        """Raised when calling if the observing object is now dead."""
         pass
 
-    def __init__(self, observer):
-        """Initialize for a bound method."""
-        super(_BoundObserverMethod, self).__init__()
-        self._instance_weakref = weakref.ref(observer.__self__)
-        self._observer_method = observer.__func__
-        self._orig_repr = "%r of %r" % (observer.__func__.__name__,
-                                        observer.__self__)
+    def __init__(self, method):
+        """Initialize for a bound method
+
+        :param method: a bound method, or another BoundObserverMethod to copy
+        """
+        super(BoundObserverMethod, self).__init__()
+        if isinstance(method, BoundObserverMethod):
+            obs_ref = method._observer_ref
+            obs_func = method._observer_func
+            orig_repr = method._orig_repr
+        elif _is_bound_method(method):
+            obs_ref = weakref.ref(method.__self__)
+            obs_func = method.__func__
+            orig_repr = _method_repr(bound=method)
+        else:
+            raise ValueError("Unknown bound method type for %r"
+                             % (method,))
+        self._observer_ref = obs_ref
+        self._observer_func = obs_func
+        self._orig_repr = orig_repr
+
+
+    def __copy__(self):
+        """Standard shallow copy implementation"""
+        return BoundObserverMethod(self)
+
 
     def __repr__(self):
-        if self._instance_weakref() is not None:
-            return self._orig_repr
-        else:
-            return ("<dead _BoundObserverMethod, formerly {%s}>"
-                    % (self._orig_repr,))
+        """String representation of a bound observer method
+
+        >>> class C (object):
+        ...    def m(self):
+        ...        return 42
+        >>> c = C()
+        >>> bom = BoundObserverMethod(c.m)
+        >>> repr(bom)
+        '<BoundObserverMethod __main__.C.m>'
+        >>> del c
+        >>> repr(bom)
+        '<BoundObserverMethod __main__.C.m (dead)>'
+        """
+        dead = self._observer_ref() is None
+        suff = " (dead)" if dead else ""
+        return ("<BoundObserverMethod %s%s>" % (self._orig_repr, suff))
 
 
     def __call__(self, observed, *args, **kwargs):
-        """'Rebind' and call, or raise _ReferenceError."""
-        observer = self._instance_weakref()
+        """Call the bound method, or raise _ReferenceError"""
+        observer = self._observer_ref()
         if observer is None:
             raise self._ReferenceError
-        self._observer_method(observer, observed, *args, **kwargs)
+        self._observer_func(observer, observed, *args, **kwargs)
         del observer
 
+    def __eq__(self, other):
+        """Tests for equality
+
+        Can test against BoundObserverMethods, plain bound methods, or
+        callables generally.
+        """
+        if _is_bound_method(other):
+            return self._observer_func == other.__func__
+        elif isinstance(other, BoundObserverMethod):
+            return self._observer_func == other._observer_func
+        elif callable(other):
+            return self._observer_func == other
+        else:
+            return False
 
 def _test():
+    """Run doctest strings"""
     import doctest
-    doctest.testmod()
-    #class Hive(object):
-    #    @event
-    #    def poked(self):
-    #        pass
-    #def _fury(h):
-    #    raise RuntimeError
-    #h = Hive()
-    #h.poked += _fury
-    #h.poked()
+    doctest.testmod(optionflags=doctest.ELLIPSIS)
 
 
 if __name__ == "__main__":

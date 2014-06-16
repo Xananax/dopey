@@ -92,7 +92,7 @@
       </menu>
       <separator/>
       <menuitem action='SoloLayer'/>
-      <menuitem action='ToggleAbove'/>
+      <menuitem action='ShowBackgroundToggle'/>
     </menu>
     <menu action='BrushMenu'>
       <!-- Brush choice from the user's collection -->
@@ -108,6 +108,7 @@
       <separator/>
       <menuitem action='BrushEditorWindow'/>
       <menuitem action='BrushIconEditorWindow'/>
+      <menuitem action='BrushReload'/>
       <separator/>
       <menu action='BlendMode'>
         <menuitem action='BlendModeNormal'/>
@@ -189,8 +190,8 @@
       <menuitem action='BackgroundWindow'/>
       <!-- Switching layers -->
       <menu action="LayerGoMenu">
-        <menuitem action='LayerFG'/>
-        <menuitem action='LayerBG'/>
+        <menuitem action='SelectLayerAbove'/>
+        <menuitem action='SelectLayerBelow'/>
         <menuitem action='PickLayer'/>
       </menu>
       <!-- Current layer properties -->
@@ -198,6 +199,8 @@
       <menuitem action='RenameLayer'/>
       <menuitem action="LayerVisibleToggle"/>
       <menuitem action="LayerLockedToggle"/>
+      <menuitem action='LayerMode'/>
+      <menuitem action='LayerStackIsolated'/>
       <menu action="LayerOpacityMenu">
         <menuitem action='IncreaseLayerOpacity'/>
         <menuitem action='DecreaseLayerOpacity'/>
@@ -218,8 +221,9 @@
       <!-- Current layer: Splitting and merging -->
       <separator/>
       <menuitem action='DuplicateLayer'/>
-      <menuitem action='MergeLayer'/>
-      <menuitem action='ConvertLayerToNormalMode'/>
+      <menuitem action='NormalizeLayerMode'/>
+      <menuitem action='MergeLayerDown'/>
+      <menuitem action='MergeVisibleLayers'/>
       <!-- Current layer: destructive actions -->
       <separator/>
       <menuitem action='ClearLayer'/>
@@ -268,7 +272,6 @@
     </menu>
     <menu action='HelpMenu'>
       <menuitem action='Docu'/>
-      <menuitem action='ShortcutHelp'/>
       <separator/>
       <menu action='DebugMenu'>
         <menuitem action='InputTestWindow'/>

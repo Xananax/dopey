@@ -16,8 +16,6 @@ from gettext import gettext as _
 
 import canvasevent
 
-from application import get_app
-
 ## Class defs
 
 class FloodFillMode (canvasevent.SwitchableModeMixin,
@@ -48,6 +46,7 @@ class FloodFillMode (canvasevent.SwitchableModeMixin,
     @property
     def cursor(self):
         name = self._current_cursor
+        from application import get_app
         app = get_app()
         return app.cursors.get_action_cursor(self.__action_name__, name)
 
@@ -56,7 +55,16 @@ class FloodFillMode (canvasevent.SwitchableModeMixin,
     def enter(self, **kwds):
         super(FloodFillMode, self).enter(**kwds)
         self._tdws = set([self.doc.tdw])
+        rootstack = self.doc.model.layer_stack
+        rootstack.current_path_updated += self._update_ui
+        rootstack.layer_properties_changed += self._update_ui
         self._update_ui()
+
+    def leave(self, **kwds):
+        rootstack = self.doc.model.layer_stack
+        rootstack.current_path_updated -= self._update_ui
+        rootstack.layer_properties_changed -= self._update_ui
+        return super(FloodFillMode, self).leave(**kwds)
 
     @classmethod
     def get_name(cls):
@@ -69,7 +77,11 @@ class FloodFillMode (canvasevent.SwitchableModeMixin,
         super(FloodFillMode, self).__init__(**kwds)
     
     def clicked_cb(self, tdw, event):
-        """Update cursor and maybe fill with settings"""
+        """Flood-fill with the current settings where clicked
+
+        If the current layer is not fillable, a new layer will always be
+        created for the fill.
+        """
         x, y = tdw.display_to_model(event.x, event.y)
         self._x = x
         self._y = y
@@ -77,10 +89,14 @@ class FloodFillMode (canvasevent.SwitchableModeMixin,
         self._update_ui()
         color = self.doc.app.brush_color_manager.get_color()
         opts = self.get_options_widget()
-        self.doc.model.flood_fill(x, y, color.get_rgb(),
-                                  tolerance=opts.tolerance,
-                                  sample_merged=opts.sample_merged,
-                                  make_new_layer=opts.make_new_layer)
+        make_new_layer = opts.make_new_layer
+        rootstack = tdw.doc.layer_stack
+        if not rootstack.current.get_fillable():
+            make_new_layer = True
+        tdw.doc.flood_fill(x, y, color.get_rgb(),
+                           tolerance=opts.tolerance,
+                           sample_merged=opts.sample_merged,
+                           make_new_layer=make_new_layer)
         opts.make_new_layer = False
         return False
 
@@ -93,11 +109,8 @@ class FloodFillMode (canvasevent.SwitchableModeMixin,
         self._update_ui()
         return super(FloodFillMode, self).motion_notify_cb(tdw, event)
 
-    def model_structure_changed_cb(self, doc):
-        super(FloodFillMode, self).model_structure_changed_cb(doc)
-        self._update_ui()
-
-    def _update_ui(self):
+    def _update_ui(self, *_ignored):
+        """Updates the UI from the model"""
         x, y = self._x, self._y
         if None in (x, y):
             x, y = self.current_position()
@@ -105,7 +118,7 @@ class FloodFillMode (canvasevent.SwitchableModeMixin,
 
         # Determine which layer will receive the fill based on the options
         opts = self.get_options_widget()
-        target_layer = model.layer
+        target_layer = model.layer_stack.current
         if opts.make_new_layer:
             target_layer = None
 
@@ -171,8 +184,11 @@ class FloodFillOptionsWidget (Gtk.Grid):
         label.set_alignment(1.0, 0.5)
         label.set_hexpand(False)
         self.attach(label, 0, row, 1, 1)
-        value = float(prefs.get(self.TOLERANCE_PREF, self.DEFAULT_TOLERANCE))
-        adj = Gtk.Adjustment(value, 0.0, 1.0, 0.05, 0.05, 0)
+        value = prefs.get(self.TOLERANCE_PREF, self.DEFAULT_TOLERANCE)
+        value = float(value)
+        adj = Gtk.Adjustment(value=value, lower=0.0, upper=1.0,
+                             step_increment=0.05, page_increment=0.05,
+                             page_size=0)
         adj.connect("value-changed", self._tolerance_changed_cb)
         self._tolerance_adj = adj
         scale = Gtk.Scale()
@@ -193,7 +209,8 @@ class FloodFillOptionsWidget (Gtk.Grid):
         checkbut = Gtk.CheckButton.new_with_label(text)
         checkbut.set_tooltip_text(
             _("When considering which area to fill, use a\n"
-              "temporary merge of all the visible layers."))
+              "temporary merge of all the visible layers\n"
+              "underneath the current layer"))
         self.attach(checkbut, 1, row, 1, 1)
         active = bool(prefs.get(self.SAMPLE_MERGED_PREF,
                                 self.DEFAULT_SAMPLE_MERGED))
@@ -222,7 +239,7 @@ class FloodFillOptionsWidget (Gtk.Grid):
         row += 1
         align = Gtk.Alignment(0.5, 1.0, 1.0, 0.0)
         align.set_vexpand(True)
-        button = Gtk.Button(_("Reset"))
+        button = Gtk.Button(label=_("Reset"))
         button.connect("clicked", self._reset_clicked_cb)
         button.set_tooltip_text(_("Reset options to their defaults"))
         align.add(button)

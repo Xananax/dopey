@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # This file is part of MyPaint.
-# Copyright (C) 2007-2008 by Martin Renold <martinxyz@gmx.ch>
+# Copyright (C) 2007-2014 by Martin Renold <martinxyz@gmx.ch>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,10 +24,9 @@ logger = logging.getLogger(__name__)
 import math
 
 from gettext import gettext as _
-import gtk
-import gobject
-from gtk import gdk
-from gtk import keysyms
+from gi.repository import Gtk
+from gi.repository import GObject
+from gi.repository import Gdk
 
 import colorselectionwindow
 import historypopup
@@ -37,13 +36,13 @@ import windowing
 import toolbar
 import animation
 import dialogs
+import layermodes
 from lib import helpers
 import canvasevent
 from colors import RGBColor, HSVColor
 
 import brushselectionwindow
 
-import gtk2compat
 import xml.etree.ElementTree as ET
 
 # palette support
@@ -65,12 +64,12 @@ def with_wait_cursor(func):
     """python decorator that adds a wait cursor around a function"""
     # TODO: put in a helper file?
     def wrapper(self, *args, **kwargs):
-        toplevels = gtk.Window.list_toplevels()
+        toplevels = Gtk.Window.list_toplevels()
         toplevels = [t for t in toplevels if t.get_window() is not None]
         for toplevel in toplevels:
             toplevel_win = toplevel.get_window()
             if toplevel_win is not None:
-                toplevel_win.set_cursor(gdk.Cursor(gdk.WATCH))
+                toplevel_win.set_cursor(Gdk.Cursor.new(Gdk.CursorType.WATCH))
             toplevel.set_sensitive(False)
         self.app.doc.tdw.grab_add()
         try:
@@ -90,9 +89,8 @@ def with_wait_cursor(func):
 ## Class definitions
 
 
-class DrawWindow (gtk.Window):
-    """Main drawing window.
-    """
+class DrawWindow (Gtk.Window):
+    """Main drawing window"""
 
     __gtype_name__ = 'MyPaintDrawWindow'
 
@@ -112,19 +110,18 @@ class DrawWindow (gtk.Window):
         self.is_fullscreen = False
 
         # Enable drag & drop
-        if not gtk2compat.USE_GTK3:
-            self.drag_dest_set(gtk.DEST_DEFAULT_MOTION |
-                            gtk.DEST_DEFAULT_HIGHLIGHT |
-                            gtk.DEST_DEFAULT_DROP,
-                            [("text/uri-list", 0, 1),
-                             ("application/x-color", 0, 2)],
-                            gtk.gdk.ACTION_DEFAULT|gtk.gdk.ACTION_COPY)
+        drag_targets = [ Gtk.TargetEntry.new("text/uri-list", 0, 1),
+                         Gtk.TargetEntry.new("application/x-color", 0, 2), ]
+        drag_flags = (Gtk.DestDefaults.MOTION | Gtk.DestDefaults.HIGHLIGHT |
+                        Gtk.DestDefaults.DROP)
+        drag_actions = Gdk.DragAction.DEFAULT | Gdk.DragAction.COPY
+        self.drag_dest_set(drag_flags, drag_targets, drag_actions)
 
         # Connect events
         self.connect('delete-event', self.quit_cb)
         self.connect('key-press-event', self.key_press_event_cb)
         self.connect('key-release-event', self.key_release_event_cb)
-        self.connect("drag-data-received", self.drag_data_received)
+        self.connect("drag-data-received", self._drag_data_received_cb)
         self.connect("window-state-event", self.window_state_event_cb)
 
         # Deferred setup
@@ -200,9 +197,6 @@ class DrawWindow (gtk.Window):
         ag.get_action("ToggleSymmetryFeedback").set_active(
                 self.app.preferences.get("ui.feedback.symmetry", False))
 
-        # Follow frame toggled state
-        self.app.doc.model.frame_observers.append(self.frame_changed_cb)
-
         # Keyboard handling
         for action in self.action_group.list_actions():
             self.app.kbm.takeover_action(action)
@@ -270,7 +264,7 @@ class DrawWindow (gtk.Window):
         xml = ET.tostring(ui_elt)
         self.app.ui_manager.add_ui_from_string(xml)
         tmp_menubar = self.app.ui_manager.get_widget('/' + name)
-        popupmenu = gtk.Menu()
+        popupmenu = Gtk.Menu()
         for item in tmp_menubar.get_children():
             tmp_menubar.remove(item)
             popupmenu.append(item)
@@ -286,25 +280,28 @@ class DrawWindow (gtk.Window):
 
     def update_title(self, filename):
         if filename:
-            self.set_title("Dopey - %s" % os.path.basename(filename))
+            #TRANSLATORS: window title for use with a filename
+            self.set_title(_("%s - MyPaint") % os.path.basename(filename))
         else:
-            self.set_title("Dopey")
+            #TRANSLATORS: window title for use without a filename
+            self.set_title(_("MyPaint"))
 
-    # INPUT EVENT HANDLING
-    def drag_data_received(self, widget, context, x, y, selection, info, t):
-        if info == 1:
-            if selection.data:
-                uri = selection.data.split("\r\n")[0]
-                fn = helpers.uri2filename(uri)
-                if os.path.exists(fn):
-                    if self.app.filehandler.confirm_destructive_action():
-                        self.app.filehandler.open_file(fn)
+
+    def _drag_data_received_cb(self, widget, context, x, y, data, info, time):
+        """Handles data being received"""
+        rawdata = data.get_data()
+        if not rawdata:
+            return
+        if info == 1: # file uris
+            uri = rawdata.split("\r\n")[0]
+            fn = helpers.uri2filename(uri)
+            if os.path.exists(fn):
+                if self.app.filehandler.confirm_destructive_action():
+                    self.app.filehandler.open_file(fn)
         elif info == 2: # color
-            color = RGBColor.new_from_drag_data(selection.data)
+            color = RGBColor.new_from_drag_data(rawdata)
             self.app.brush_color_manager.set_color(color)
             self.app.brush_color_manager.push_history(color)
-            # Don't popup the color history for now, as I haven't managed
-            # to get it to cooperate.
 
     def print_memory_leak_cb(self, action):
         helpers.record_memory_leak_status(print_diff = True)
@@ -324,8 +321,8 @@ class DrawWindow (gtk.Window):
             self.profiler_active = True
             logger.info('--- GUI Profiling starts ---')
             while self.profiler_active:
-                profile.runcall(gtk.main_iteration_do, False)
-                if not gtk.events_pending():
+                profile.runcall(Gtk.main_iteration_do, False)
+                if not Gtk.events_pending():
                     time.sleep(0.050) # ugly trick to remove "user does nothing" from profile
             logger.info('--- GUI Profiling ends ---')
 
@@ -337,7 +334,7 @@ class DrawWindow (gtk.Window):
             if os.path.exists("profile_fromgui.png"):
                 os.system('xdg-open profile_fromgui.png &')
 
-        gobject.idle_add(doit)
+        GObject.idle_add(doit)
 
     def _get_active_doc(self):
         # Determines which is the active doc for the purposes of keyboard
@@ -356,9 +353,6 @@ class DrawWindow (gtk.Window):
         target_doc, target_tdw = self._get_active_doc()
         if target_doc is None:
             return False
-        # Unfullscreen
-        if self.is_fullscreen and event.keyval == keysyms.Escape:
-            gobject.idle_add(self.unfullscreen)
         # Forward the keypress to the active doc's active InteractionMode.
         return target_doc.modes.top.key_press_cb(win, target_tdw, event)
 
@@ -482,7 +476,7 @@ class DrawWindow (gtk.Window):
             dialog.show_all()
             dialog.present()
         else:
-            dialog.response(gtk.RESPONSE_CANCEL)
+            dialog.response(Gtk.ResponseType.CANCEL)
 
 
     def _brush_chooser_dialog_response_cb(self, dialog, response_id):
@@ -520,19 +514,19 @@ class DrawWindow (gtk.Window):
 
     def window_state_event_cb(self, widget, event):
         # Respond to changes of the fullscreen state only
-        if not event.changed_mask & gdk.WINDOW_STATE_FULLSCREEN:
+        if not event.changed_mask & Gdk.WindowState.FULLSCREEN:
             return
-        self.is_fullscreen = event.new_window_state & gdk.WINDOW_STATE_FULLSCREEN
+        self.is_fullscreen = event.new_window_state & Gdk.WindowState.FULLSCREEN
         self.update_fullscreen_action()
 
     def update_fullscreen_action(self):
         action = self.action_group.get_action("Fullscreen")
         if self.is_fullscreen:
-            action.set_stock_id(gtk.STOCK_LEAVE_FULLSCREEN)
+            action.set_icon_name("mypaint-unfullscreen-symbolic")
             action.set_tooltip(_("Leave Fullscreen Mode"))
             action.set_label(_("Leave Fullscreen"))
         else:
-            action.set_stock_id(gtk.STOCK_FULLSCREEN)
+            action.set_icon_name("mypaint-fullscreen-symbolic")
             action.set_tooltip(_("Enter Fullscreen Mode"))
             action.set_label(_("Fullscreen"))
 
@@ -544,7 +538,7 @@ class DrawWindow (gtk.Window):
         button = 1
         time = 0
         if event is not None:
-            if event.type == gdk.BUTTON_PRESS:
+            if event.type == Gdk.EventType.BUTTON_PRESS:
                 button = event.button
                 time = event.time
         # GTK3: arguments have a different order, and "data" is required.
@@ -585,9 +579,9 @@ class DrawWindow (gtk.Window):
         else:
             self.app.scratchpad_doc.model.clear()
             # With no default - adopt the currently chosen background
-            bg = self.app.doc.model.background
+            bg_layer = self.app.doc.model.layer_stack.background_layer
             if self.app.scratchpad_doc:
-                self.app.scratchpad_doc.model.set_background(bg)
+                self.app.scratchpad_doc.model.set_background(bg_layer)
 
         self.app.scratchpad_filename = self.app.preferences['scratchpad.last_opened'] = self.app.filehandler.get_scratchpad_autosave()
 
@@ -618,9 +612,9 @@ class DrawWindow (gtk.Window):
         self.app.filehandler.save_scratchpad(self.app.scratchpad_filename)
 
     def scratchpad_copy_background_cb(self, action):
-        bg = self.app.doc.model.background
+        bg_layer = self.app.doc.model.layer_stack.background_layer
         if self.app.scratchpad_doc:
-            self.app.scratchpad_doc.model.set_background(bg)
+            self.app.scratchpad_doc.model.set_background(bg_layer)
 
     def draw_sat_spectrum_cb(self, action):
         g = GimpPalette()
@@ -667,36 +661,15 @@ class DrawWindow (gtk.Window):
 
 
     def quit_cb(self, *junk):
-        self.app.doc.model.split_stroke()
+        self.app.doc.model.flush_updates()
         self.app.save_gui_config() # FIXME: should do this periodically, not only on quit
 
         if not self.app.filehandler.confirm_destructive_action(title=_('Quit'), question=_('Really Quit?')):
             return True
 
-        gtk.main_quit()
+        self.app.doc.model.cleanup()
+        Gtk.main_quit()
         return False
-
-
-    def trim_layer_cb(self, action):
-        """Trim the current layer to the frame"""
-        self.app.doc.model.trim_layer()
-
-
-    def toggle_frame_cb(self, action):
-        model = self.app.doc.model
-        enabled = bool(model.frame_enabled)
-        desired = bool(action.get_active())
-        if enabled != desired:
-            model.set_frame_enabled(desired, user_initiated=True)
-
-    def frame_changed_cb(self):
-        action = self.action_group.get_action("FrameToggle")
-        if getattr(action, "in_callback", False):
-            return
-        action.in_callback = True
-        enabled = bool(self.app.doc.model.frame_enabled)
-        action.set_active(enabled)
-        action.in_callback = False
 
     def download_brush_pack_cb(self, *junk):
         url = BRUSHPACK_URI
@@ -747,12 +720,13 @@ class DrawWindow (gtk.Window):
 
     # INFORMATION
     # TODO: Move into dialogs.py?
-    def about_mypaint_cb(self, action):
-        d = gtk.AboutDialog()
+    def about_cb(self, action):
+        d = Gtk.AboutDialog()
         d.set_transient_for(self)
         d.set_program_name("MyPaint")
         d.set_version(self.app.version)
-        d.set_copyright(_("Copyright (C) 2005-2012\nMartin Renold and the MyPaint Development Team"))
+        d.set_copyright(_("Copyright (C) 2005-2014\n"
+                          "Martin Renold and the MyPaint Development Team"))
         d.set_website("http://mypaint.info/")
         d.set_logo(self.app.pixmaps.mypaint_logo)
         d.set_license(
@@ -808,8 +782,6 @@ class DrawWindow (gtk.Window):
 
     def show_infodialog_cb(self, action):
         text = {
-        'ShortcutHelp':
-                _("Move your mouse over a menu entry, then press the key to assign."),
         'ContextHelp':
                 _("Brush shortcut keys are used to quickly save/restore brush "
                  "settings. You can paint with one hand and change brushes with "
@@ -868,7 +840,7 @@ class DrawWindow (gtk.Window):
         statusbar.push(context_id, statusbar_msg)
         # Icon
         icon_name = mode.get_icon_name()
-        icon_size = gtk.ICON_SIZE_SMALL_TOOLBAR
+        icon_size = Gtk.IconSize.SMALL_TOOLBAR
         mode_img = self.app.builder.get_object("app_current_mode_icon")
         if not icon_name:
             icon_name = "missing-image"
@@ -879,7 +851,7 @@ class DrawWindow (gtk.Window):
         icon_name = mode.get_icon_name()
         if not icon_name:
             icon_name = "missing-image"
-        icon_size = gtk.ICON_SIZE_DIALOG
+        icon_size = Gtk.IconSize.DIALOG
         tooltip.set_icon_from_icon_name(icon_name, icon_size)
         description = None
         action = mode.get_action()

@@ -4,70 +4,15 @@ Perhaps an increasing amount.
 -->
 <interface>
 
-<object class="GtkIconFactory" id="stock_icon_factory">
-  <!-- Custom stock icon mapping -->
-  <sources>
-    <!-- View manipulation -->
-    <source stock-id="mypaint-view-rotate-left"
-           icon-name="mypaint-view-rotate-anticlockwise"/>
-    <source stock-id="mypaint-view-rotate-right"
-           icon-name="mypaint-view-rotate-clockwise"/>
-    <source stock-id="mypaint-view-mirror-horizontal"
-           icon-name="mypaint-view-mirror-horizontal"/>
-    <source stock-id="mypaint-view-mirror-vertical"
-           icon-name="mypaint-view-mirror-vertical"/>
-    <!-- Blend modes -->
-    <source stock-id="mypaint-brush-blend-modes"
-           icon-name="mypaint-brush-blend-modes"/>
-    <source stock-id="mypaint-brush-blend-mode-normal"
-           icon-name="mypaint-brush-blend-mode-normal"/>
-    <source stock-id="mypaint-brush-blend-mode-eraser"
-           icon-name="mypaint-brush-blend-mode-eraser"/>
-    <source stock-id="mypaint-brush-blend-mode-alpha-lock"
-           icon-name="mypaint-brush-blend-mode-alpha-lock"/>
-    <source stock-id="mypaint-brush-blend-mode-colorize"
-           icon-name="mypaint-brush-blend-mode-colorize"/>
-    <!-- Brush modifications -->
-    <source stock-id="mypaint-brush-mods-active"
-           icon-name="mypaint-brush-mods-active"/>
-    <source stock-id="mypaint-brush-mods-inactive"
-           icon-name="mypaint-brush-mods-inactive"/>
-    <!-- Editing modes -->
-    <source stock-id="mypaint-symmetry-mode" icon-name="mypaint-symmetry"/>
-    <source stock-id="mypaint-line-mode" icon-name="mypaint-line-mode"/>
-    <source stock-id="mypaint-line-mode-freehand"
-           icon-name="mypaint-line-mode-freehand"/>
-    <source stock-id="mypaint-line-mode-straight"
-           icon-name="mypaint-line-mode-straight"/>
-    <source stock-id="mypaint-line-mode-sequence"
-           icon-name="mypaint-line-mode-sequence"/>
-    <source stock-id="mypaint-line-mode-ellipse"
-           icon-name="mypaint-line-mode-ellipse"/>
-  </sources>
-</object><!-- /stock_iconfactory -->
-
-
 <object class="GtkUIManager" id="app_ui_manager">
   <!-- Defines GtkActions for commands -->
-  <!--
-
-    NOTE: each stock_id should be used only once, for the application-wide,
-    main-document actions rather than for little things like brushes, palettes
-    etc. This is particularly important when reusing regular GTK stock icons
-    whose stock items define keyboard shortcuts: when the "little" actions are
-    too unimportant to declare their own, the stock accelerators will be used
-    instead, which typically isn't what we want.
-    
-    Use icon-name instead for "little" actions.
-
-  -->
   <ui/><!-- TODO: move menu.xml here? -->
   <child>
     <object class="GtkActionGroup" id="FileActions">
       <!-- Document loading and saving -->
       <child>
         <object class="GtkAction" id="New">
-          <property name="stock_id">gtk-new</property>
+          <property name="icon-name">mypaint-document-new-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">New</property>
           <property name="tooltip" translatable="yes"
@@ -78,7 +23,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="Open">
-          <property name="stock_id">gtk-open</property>
+          <property name="icon-name">mypaint-document-open-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Open...</property>
           <property name="tooltip" translatable="yes"
@@ -98,8 +43,22 @@ Perhaps an increasing amount.
         <accelerator key="F3"/>
       </child>
       <child>
+        <object class="GtkRecentAction" id="OpenRecent">
+          <property name="label" translatable="yes"
+            context="Menu|File|">Open Recent</property>
+          <property name="icon-name">mypaint-document-open-recent-symbolic</property>
+          <property name="tooltip" translatable="yes"
+            >Open Recent files</property>
+          <signal name="item-activated" handler="open_recent_cb"/>
+          <property name="show-numbers">1</property>
+          <property name="show-tips">1</property>
+          <property name="show-tips">1</property>
+          <property name="sort-type">GTK_RECENT_SORT_MRU</property>
+        </object>
+      </child>
+      <child>
         <object class="GtkAction" id="Reload">
-          <property name="stock_id">gtk-revert-to-saved</property>
+          <property name="icon-name">mypaint-document-revert-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Revert</property>
           <property name="tooltip" translatable="yes"
@@ -110,7 +69,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="Save">
-          <property name="stock_id">gtk-save</property>
+          <property name="icon-name">mypaint-document-save-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Save</property>
           <property name="tooltip" translatable="yes"
@@ -121,7 +80,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="SaveAs">
-          <property name="stock_id">gtk-save-as</property>
+          <property name="icon-name">mypaint-document-save-as-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Save As...</property>
           <property name="tooltip" translatable="yes"
@@ -132,7 +91,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="Export">
-          <property name="icon-name">gtk-save-as</property>
+          <property name="icon-name">mypaint-document-export-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Export...</property>
           <property name="tooltip" translatable="yes">Export to a file</property>
@@ -142,7 +101,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="SaveScrap">
-          <property name="stock_id">gtk-add</property>
+          <property name="icon-name">mypaint-scrap-save-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Save As Scrap</property>
           <property name="tooltip" translatable="yes"
@@ -153,7 +112,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="PrevScrap">
-          <property name="stock_id">gtk-go-back</property>
+          <property name="icon-name">mypaint-scrap-prev-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Open Previous Scrap</property>
           <property name="tooltip" translatable="yes"
@@ -164,7 +123,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="NextScrap">
-          <property name="stock_id">gtk-go-forward</property>
+          <property name="icon-name">mypaint-scrap-next-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|File|">Open Next Scrap</property>
           <property name="tooltip" translatable="yes"
@@ -191,18 +150,6 @@ Perhaps an increasing amount.
             >Current brush</property>
         </object>
       </child>
-      <child>
-        <object class="MyPaintFactoryAction" id="BrushSettingsDropdown">
-          <property name="tooltip" translatable="yes" context="toolbar|"
-            >Brush settings</property>
-        </object>
-      </child>
-      <child>
-        <object class="MyPaintFactoryAction" id="LineDropdown">
-          <property name="tooltip" translatable="yes" context="toolbar|"
-            >Line mode</property>
-        </object>
-      </child>
 
       <!-- Brushes and brush groups: defined in gui.brushselectionwindow -->
       <child>
@@ -213,7 +160,7 @@ Perhaps an increasing amount.
             >Brush Groups</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Brushes</property>
-          <property name="icon-name">mypaint-tool-brush</property>
+          <property name="icon-name">mypaint-brushes-symbolic</property>
         </object>
       </child>
 
@@ -226,21 +173,48 @@ Perhaps an increasing amount.
             >Color Adjusters</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Colors</property>
-          <property name="icon-name">mypaint-tool-paint-color</property>
+          <property name="icon-name">mypaint-colors-symbolic</property>
+        </object>
+      </child>
+
+      <!-- Layer modes: defined in gui.layermodes -->
+      <child>
+        <object class="MyPaintFactoryAction" id="LayerMode">
+          <property name="tooltip" translatable="yes" context="Menu|Layer|"
+            >The current layer's compositing mode</property>
+          <property name="label" translatable="yes" context="Menu|Layer|"
+            >Compositing Mode</property>
+          <property name="short-label" translatable="yes"
+            context="Toolbar|">Mode</property>
+          <property name="icon-name">mypaint-compositing-symbolic</property>
+        </object>
+      </child>
+
+      <child>
+        <object class="GtkToggleAction" id="LayerStackIsolated">
+          <property name="tooltip" translatable="yes" context="Menu|Layer|"
+            >Group is rendered separately over a transparent background. This happens automatically when non-standard modes or opacities are applied to the group itself.</property>
+          <property name="label" translatable="yes" context="Menu|Layer|"
+            >Group Isolation</property>
+          <property name="short-label" translatable="yes"
+            context="Toolbar|">Isolation</property>
+          <signal name="toggled" handler="layer_stack_isolated_toggled_cb"/>
         </object>
       </child>
 
       <!-- Undo stack -->
       <child>
         <object class="GtkAction" id="Undo">
-          <property name="stock_id">gtk-undo</property>
+          <property name="icon_name">mypaint-undo-ltr-symbolic</property>
+          <!-- Code in document.py takes care of ltr/rtl details -->
           <signal name="activate" handler="undo_cb"/>
         </object>
         <accelerator key="z"/>
       </child>
       <child>
         <object class="GtkAction" id="Redo">
-          <property name="stock_id">gtk-redo</property>
+          <property name="icon_name">mypaint-redo-ltr-symbolic</property>
+          <!-- Code in document.py takes care of ltr/rtl details -->
           <signal name="activate" handler="redo_cb"/>
         </object>
         <accelerator key="y"/>
@@ -342,6 +316,17 @@ Perhaps an increasing amount.
           <signal name="activate" handler="grayer_cb"/>
         </object>
       </child>
+      <!-- Resetting -->
+      <child>
+        <object class="GtkAction" id="BrushReload">
+          <property name="label" translatable="yes"
+            context="Menu|Brush|">Reload Brush Settings</property>
+          <property name="tooltip" translatable="yes"
+            >Restore all brush settings to the current brush's saved values</property>
+          <signal name="activate" handler="brush_reload_cb"/>
+          <property name="icon-name">mypaint-clear-all-symbolic</property>
+        </object>
+      </child>
       <!-- Context (saving and restoring bushes and colours) -->
       <!-- More actions are added by doc.init_context_actions() -->
       <child>
@@ -350,7 +335,7 @@ Perhaps an increasing amount.
             context="Menu|Brush|">Pick Stroke and Layer</property>
           <property name="tooltip" translatable="yes"
             >Pick brushstroke: settings and layer</property>
-          <property name="stock_id">gtk-jump-to</property>
+          <property name="icon-name">mypaint-target-symbolic</property>
           <signal name="activate" handler="pick_context_cb"/>
         </object>
         <accelerator key="w"/>
@@ -374,15 +359,9 @@ Perhaps an increasing amount.
         <accelerator key="q"/>
       </child>
       <!-- Layers stack manipulation -->
-      <!--
-
-        Layer operations in MyPaint are often the equivalent of major editing
-        operations in other apps, so some of these get stock_ids.
-
-      -->
       <child>
         <object class="GtkAction" id="ClearLayer">
-          <property name="stock_id">gtk-clear</property>
+          <property name="icon-name">mypaint-clear-all-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">Clear</property>
           <property name="tooltip" translatable="yes"
@@ -402,7 +381,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="CopyLayer">
-          <property name="stock_id">gtk-copy</property>
+          <property name="icon-name">mypaint-copy-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">Copy</property>
           <property name="tooltip" translatable="yes"
@@ -413,7 +392,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="PasteLayer">
-          <property name="stock_id">gtk-paste</property>
+          <property name="icon-name">mypaint-paste-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">Paste</property>
           <property name="tooltip" translatable="yes"
@@ -433,30 +412,30 @@ Perhaps an increasing amount.
         <accelerator key="h"/>
       </child>
       <child>
-        <object class="GtkAction" id="LayerFG">
-          <property name="stock_id">gtk-go-up</property>
+        <object class="GtkAction" id="SelectLayerAbove">
+          <property name="icon-name">mypaint-layer-above-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|Go to Layer|">Above</property>
           <property name="tooltip" translatable="yes"
             >Go one layer up in the layers stack</property>
-          <signal name="activate" handler="layer_fg_cb"/>
+          <signal name="activate" handler="select_layer_above_cb"/>
         </object>
         <accelerator key="Page_Up"/>
       </child>
       <child>
-        <object class="GtkAction" id="LayerBG">
-          <property name="stock_id">gtk-go-down</property>
+        <object class="GtkAction" id="SelectLayerBelow">
+          <property name="icon-name">mypaint-layer-below-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|Go to Layer|">Below</property>
           <property name="tooltip" translatable="yes"
             >Go one layer down in the layers stack</property>
-          <signal name="activate" handler="layer_bg_cb"/>
+          <signal name="activate" handler="select_layer_below_cb"/>
         </object>
         <accelerator key="Page_Down"/>
       </child>
       <child>
         <object class="GtkAction" id="NewLayerFG">
-          <property name="icon-name">gtk-add</property>
+          <property name="icon-name">mypaint-layer-new-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">New (above)</property>
           <property name="tooltip" translatable="yes"
@@ -467,6 +446,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="NewLayerBG">
+          <property name="icon-name">mypaint-layer-new-below-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">New (below)</property>
           <property name="tooltip" translatable="yes"
@@ -476,20 +456,28 @@ Perhaps an increasing amount.
         <accelerator key="Page_Down" modifiers="GDK_CONTROL_MASK"/>
       </child>
       <child>
-        <object class="GtkAction" id="MergeLayer">
-          <!-- FIXME: need a better icon -->
-          <property name="icon-name">gtk-dnd-multiple</property>
+        <object class="GtkAction" id="MergeLayerDown">
+          <property name="icon-name">mypaint-layer-merge-down-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">Merge Down</property>
           <property name="tooltip" translatable="yes"
             >Merge layer with the one beneath it</property>
-          <signal name="activate" handler="merge_layer_cb"/>
+          <signal name="activate" handler="merge_layer_down_cb"/>
         </object>
         <accelerator key="Delete" modifiers="GDK_CONTROL_MASK"/>
       </child>
       <child>
+        <object class="GtkAction" id="MergeVisibleLayers">
+          <property name="label" translatable="yes"
+            context="Menu|Layer|">Merge Visible</property>
+          <property name="tooltip" translatable="yes"
+            >Merge all visible layers into a new layer</property>
+          <signal name="activate" handler="merge_visible_layers_cb"/>
+        </object>
+      </child>
+      <child>
         <object class="GtkAction" id="RemoveLayer">
-          <property name="stock_id">gtk-delete</property>
+          <property name="icon-name">mypaint-layer-delete-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Layer|">Delete</property>
           <property name="tooltip" translatable="yes"
@@ -499,10 +487,10 @@ Perhaps an increasing amount.
         <accelerator key="Delete" modifiers="GDK_SHIFT_MASK"/>
       </child>
       <child>
-        <object class="GtkAction" id="ConvertLayerToNormalMode">
+        <object class="GtkAction" id="NormalizeLayerMode">
           <property name="label" translatable="yes"
-            context="Menu|Layer">Convert to Normal mode</property>
-          <signal name="activate" handler="convert_layer_to_normal_mode_cb"/>
+            context="Menu|Layer">Normalize Layer Mode</property>
+          <signal name="activate" handler="normalize_layer_mode_cb"/>
         </object>
       </child>
       <child>
@@ -527,8 +515,8 @@ Perhaps an increasing amount.
             context="Menu|Layer|">Raise</property>
           <property name="tooltip" translatable="yes"
             >Raise the current layer one step in the layers stack</property>
-          <property name="icon-name">gtk-go-up</property>
-          <signal name="activate" handler="move_layer_in_stack_cb"/>
+          <property name="icon-name">mypaint-layer-raise-symbolic</property>
+          <signal name="activate" handler="reorder_layer_cb"/>
         </object>
       </child>
       <child>
@@ -537,8 +525,8 @@ Perhaps an increasing amount.
             context="Menu|Layer|">Lower</property>
           <property name="tooltip" translatable="yes"
             >Lower the current layer one step in the layers stack</property>
-          <property name="icon-name">gtk-go-down</property>
-          <signal name="activate" handler="move_layer_in_stack_cb"/>
+          <property name="icon-name">mypaint-layer-lower-symbolic</property>
+          <signal name="activate" handler="reorder_layer_cb"/>
         </object>
       </child>
       <child>
@@ -547,7 +535,7 @@ Perhaps an increasing amount.
             context="Menu|Layer|">Duplicate</property>
           <property name="tooltip" translatable="yes"
             >Make an exact duplicate of the current layer</property>
-          <property name="icon-name">mypaint-layer-duplicate</property>
+          <property name="icon-name">mypaint-duplicate-symbolic</property>
           <signal name="activate" handler="duplicate_layer_cb"/>
         </object>
       </child>
@@ -578,13 +566,20 @@ Perhaps an increasing amount.
           <signal name="activate" handler="layer_visible_toggle_cb"/>
         </object>
       </child>
-
-
+      <child>
+        <object class="GtkToggleAction" id="ShowBackgroundToggle">
+          <property name="label" translatable="yes"
+            context="Menu|View|">Show Background</property>
+          <property name="tooltip" translatable="yes"
+            >Show the background layer</property>
+          <signal name="activate" handler="show_background_toggle_cb"/>
+        </object>
+      </child>
 
       <!-- View manipulation -->
       <child>
         <object class="GtkAction" id="ResetView">
-          <property name="icon-name">mypaint-view-100</property>
+          <property name="icon-name">mypaint-view-100-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|View|">Reset and Center</property>
           <property name="tooltip" translatable="yes"
@@ -595,7 +590,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkToggleAction" id="FitView">
-          <property name="icon-name">mypaint-view-fit</property>
+          <property name="icon-name">mypaint-view-fit-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|View|">Fit</property>
           <property name="tooltip" translatable="yes"
@@ -612,7 +607,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="ResetZoom">
-          <property name="icon-name">mypaint-view-100</property>
+          <property name="icon-name">mypaint-view-100-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|View|Reset|">Zoom</property>
           <signal name="activate" handler="reset_view_cb"/>
@@ -634,7 +629,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="ZoomIn">
-          <property name="icon-name">mypaint-view-zoom-more</property>
+          <property name="icon-name">mypaint-view-zoom-more-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|View|Adjust View|">Zoom In</property>
           <property name="tooltip" translatable="yes"
@@ -645,7 +640,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="ZoomOut">
-          <property name="icon-name">mypaint-view-zoom-less</property>
+          <property name="icon-name">mypaint-view-zoom-less-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|View|Adjust View|">Zoom Out</property>
           <property name="tooltip" translatable="yes"
@@ -656,75 +651,68 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="RotateLeft">
-          <property name="stock_id">mypaint-view-rotate-left</property>
+          <property name="icon-name"
+                    >mypaint-view-rotate-anticlockwise-symbolic</property>
           <property name="label" translatable="yes"
-            context="Menu|View|Adjust View|">Rotate Counterclockwise</property>
+                    context="Menu|View|Adjust View|"
+                    >Rotate Counterclockwise</property>
           <property name="tooltip" translatable="yes"
-            >Rotate the view counterclockwise</property>
+              >Rotate the view counterclockwise</property>
           <signal name="activate" handler="rotate_cb"/>
         </object>
         <accelerator key="Left" modifiers="GDK_CONTROL_MASK"/>
       </child>
       <child>
         <object class="GtkAction" id="RotateRight">
-          <property name="stock_id">mypaint-view-rotate-right</property>
+          <property name="icon-name"
+                    >mypaint-view-rotate-clockwise-symbolic</property>
           <property name="label" translatable="yes"
-            context="Menu|View|Adjust View|">Rotate Clockwise</property>
+                    context="Menu|View|Adjust View|"
+                    >Rotate Clockwise</property>
           <property name="tooltip" translatable="yes"
-              >Rotate the view clockwise</property>
+                    >Rotate the view clockwise</property>
           <signal name="activate" handler="rotate_cb"/>
         </object>
         <accelerator key="Right" modifiers="GDK_CONTROL_MASK"/>
       </child>
       <child>
         <object class="GtkAction" id="MirrorHorizontal">
-          <property name="stock_id">mypaint-view-mirror-horizontal</property>
+          <property name="icon-name"
+                    >mypaint-view-mirror-horizontal-symbolic</property>
           <property name="label" translatable="yes"
-            context="Menu|View|Adjust View|">Mirror Horizontal</property>
+                    context="Menu|View|Adjust View|"
+                    >Mirror Horizontal</property>
           <property name="tooltip" translatable="yes"
-            >Flip the view left to right</property>
+                    >Flip the view left to right</property>
           <signal name="activate" handler="mirror_horizontal_cb"/>
         </object>
         <accelerator key="i"/>
       </child>
       <child>
         <object class="GtkAction" id="MirrorVertical">
-          <property name="stock_id">mypaint-view-mirror-vertical</property>
+          <property name="icon-name"
+                    >mypaint-view-mirror-vertical-symbolic</property>
           <property name="label" translatable="yes"
-            context="Menu|View|Adjust View|">Mirror Vertical</property>
+                    context="Menu|View|Adjust View|"
+                    >Mirror Vertical</property>
           <property name="tooltip" translatable="yes"
-            >Flip the view upside-down</property>
+                    >Flip the view upside-down</property>
           <signal name="activate" handler="mirror_vertical_cb"/>
         </object>
         <accelerator key="u"/>
       </child>
       <child>
-        <object class="GtkAction" id="SoloLayer">
+        <object class="GtkToggleAction" id="SoloLayer">
           <property name="label" translatable="yes"
             context="Menu|View|">Layer Solo</property>
-          <signal name="activate" handler="solo_layer_cb"/>
+          <signal name="toggled" handler="current_layer_solo_toggled_cb"/>
         </object>
         <accelerator key="Home"/>
       </child>
-      <child>
-        <object class="GtkAction" id="ToggleAbove">
-          <property name="label" translatable="yes"
-            context="Menu|View|">Hide Layers Above Current</property>
-          <signal name="activate" handler="toggle_layers_above_cb"/>
-        </object>
-        <accelerator key="End"/>
-      </child>
       <!-- Editing modes -->
       <child>
-        <object class="GtkAction" id="BlendMode">
-          <property name="stock_id">mypaint-brush-blend-modes</property>
-          <property name="label" translatable="yes"
-            context="Menu|Brush|">Blend Mode</property>
-        </object>
-      </child>
-      <child>
         <object class="GtkToggleAction" id="Symmetry">
-          <property name="stock_id">mypaint-symmetry-mode</property>
+          <property name="icon-name">mypaint-symmetry-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Edit|">Symmetrical Painting</property>
           <property name="tooltip" translatable="yes"
@@ -760,6 +748,64 @@ Perhaps an increasing amount.
     </object><!-- /DocumentActions -->
   </child>
   <child>
+    <object class="GtkActionGroup" id="BrushModifierActions">
+      <!-- Brush blend modes: defined in gui/brushmodifier.py -->
+      <child>
+        <object class="GtkAction" id="BlendMode"><!-- Menu -->
+          <property name="icon_name">mypaint-brush-blend-modes-symbolic</property>
+          <property name="label" translatable="yes"
+            context="Menu|Brush|">Blend Mode</property>
+        </object>
+      </child>
+      <child>
+        <object class="GtkToggleAction" id="BlendModeNormal">
+          <property name="icon_name">mypaint-paint-over-symbolic</property>
+          <property name="label" translatable="yes"
+              context="Menu|Brush|Blend Mode|">Paint Over</property>
+          <property name="tooltip" translatable="yes"
+              >Normal brush application</property>
+          <signal name="activate" handler="blend_mode_normal_cb"/>
+        </object>
+        <accelerator key="n"/>
+      </child>
+      <child>
+        <object class="GtkToggleAction" id="BlendModeEraser">
+          <property name="icon_name">mypaint-eraser-symbolic</property>
+          <property name="label" translatable="yes"
+            context="Menu|Brush|Blend Mode|">Eraser</property>
+          <property name="tooltip" translatable="yes"
+            >Erase using the current brush</property>
+          <signal name="activate" handler="blend_mode_eraser_cb"/>
+        </object>
+        <accelerator key="e"/>
+      </child>
+      <child>
+        <object class="GtkToggleAction" id="BlendModeLockAlpha">
+          <property name="icon_name"
+            >mypaint-lock-alpha-symbolic</property>
+          <property name="label" translatable="yes"
+            context="Menu|Brush|Blend Mode|">Lock Alpha</property>
+          <property name="tooltip" translatable="yes"
+            >Paint without affecting opacity</property>
+          <signal name="activate" handler="blend_mode_lock_alpha_cb"/>
+        </object>
+        <accelerator key="l" modifiers="GDK_SHIFT_MASK"/>
+      </child>
+      <child>
+        <object class="GtkToggleAction" id="BlendModeColorize">
+          <property name="icon_name"
+            >mypaint-colorize-symbolic</property>
+          <property name="label" translatable="yes"
+            context="Menu|Brush|Blend Mode|">Colorize</property>
+          <property name="tooltip" translatable="yes"
+            >Paint colors without affecting brightness or opacity</property>
+          <signal name="activate" handler="blend_mode_colorize_cb"/>
+        </object>
+        <accelerator key="k" modifiers="GDK_SHIFT_MASK"/>
+      </child>
+    </object><!-- /BrushModifierActions -->
+  </child>
+  <child>
     <object class="GtkActionGroup" id="WindowActions">
       <!-- Actions affecting the application window and document view -->
       <!-- Menu: File -->
@@ -773,7 +819,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="Quit">
           <property name="label" translatable="yes"
             context="Menu|File|">Quit</property>
-          <property name="stock_id">gtk-quit</property>
+          <property name="icon-name">mypaint-close-symbolic</property>
           <signal name="activate" handler="quit_cb"/>
         </object>
         <accelerator key="q" modifiers="GDK_CONTROL_MASK"/>
@@ -782,7 +828,7 @@ Perhaps an increasing amount.
         <object class="GtkToggleAction" id="FrameToggle">
           <property name="label" translatable="yes"
             context="Menu|File|">Frame Enabled</property>
-          <property name="icon-name">mypaint-frame</property>
+          <property name="icon-name">mypaint-frame-symbolic</property>
           <signal name="activate" handler="toggle_frame_cb"/>
         </object>
       </child>
@@ -1041,7 +1087,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="ScratchNew">
           <property name="label" translatable="yes"
             context="Menu|Scratchpad|">New</property>
-          <property name="icon-name">gtk-new</property>
+          <property name="icon-name">mypaint-document-new-symbolic</property>
           <signal name="activate" handler="new_scratchpad_cb"/>
         </object>
       </child>
@@ -1049,7 +1095,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="ScratchLoad">
           <property name="label" translatable="yes"
             context="Menu|Scratchpad|">Open...</property>
-          <property name="icon-name">gtk-open</property>
+          <property name="icon-name">mypaint-document-open-symbolic</property>
           <signal name="activate" handler="load_scratchpad_cb"/>
         </object>
       </child>
@@ -1057,7 +1103,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="ScratchSaveNow">
           <property name="label" translatable="yes"
             context="Menu|Scratchpad|">Save</property>
-          <property name="icon-name">gtk-save</property>
+          <property name="icon-name">mypaint-document-save-symbolic</property>
           <signal name="activate" handler="save_current_scratchpad_cb"/>
         </object>
       </child>
@@ -1065,7 +1111,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="ScratchSaveAs">
           <property name="label" translatable="yes"
             context="Menu|Scratchpad|">Save As...</property>
-          <property name="icon-name">gtk-save-as</property>
+          <property name="icon-name">mypaint-document-save-as-symbolic</property>
           <signal name="activate" handler="save_as_scratchpad_cb"/>
         </object>
       </child>
@@ -1073,7 +1119,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="ScratchRevert">
           <property name="label" translatable="yes"
             context="Menu|Scratchpad|">Revert</property>
-          <property name="icon-name">gtk-refresh</property>
+          <property name="icon-name">mypaint-document-revert-symbolic</property>
           <signal name="activate" handler="revert_current_scratchpad_cb"/>
         </object>
       </child>
@@ -1124,7 +1170,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="ContextHelp">
           <property name="label" translatable="yes"
             context="Menu|Brush|Shortcut Keys|">Help</property>
-          <property name="icon-name">gtk-help</property>
+          <property name="icon-name">mypaint-help-symbolic</property>
           <signal name="activate" handler="show_infodialog_cb"/>
         </object>
       </child>
@@ -1132,7 +1178,7 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="BrushChooserPopup">
           <property name="label" translatable="yes"
             context="Menu|Brush|">Change Brush</property>
-          <property name="icon-name">mypaint-tool-brush</property>
+          <property name="icon-name">mypaint-brushes-symbolic</property>
           <signal name="activate" handler="brush_chooser_popup_cb"/>
         </object>
         <accelerator key="b"/>
@@ -1142,13 +1188,14 @@ Perhaps an increasing amount.
           <property name="label" translatable="yes"
             context="Menu|Brush|">Get More Brushes...</property>
           <signal name="activate" handler="download_brush_pack_cb"/>
+          <property name="icon-name">mypaint-globe-symbolic</property>
         </object>
       </child>
       <child>
         <object class="GtkAction" id="ImportBrushPack">
           <property name="label" translatable="yes"
             context="Menu|Brush|">Import Brushes...</property>
-          <property name="icon-name">gtk-open</property>
+          <property name="icon-name">mypaint-document-open-symbolic</property>
           <signal name="activate" handler="import_brush_pack_cb"/>
         </object>
       </child>
@@ -1163,23 +1210,15 @@ Perhaps an increasing amount.
         <object class="GtkAction" id="Docu">
           <property name="label" translatable="yes"
             context="Menu|Help|">Where is the Documentation?</property>
-          <property name="icon-name">gtk-info</property>
-          <signal name="activate" handler="show_infodialog_cb"/>
-        </object>
-      </child>
-      <child>
-        <object class="GtkAction" id="ShortcutHelp">
-          <property name="label" translatable="yes"
-            context="Menu|Help|">Change the Keyboard Shortcuts?</property>
-          <property name="icon-name">gtk-info</property>
+          <property name="icon-name">mypaint-info-symbolic</property>
           <signal name="activate" handler="show_infodialog_cb"/>
         </object>
       </child>
       <child>
         <object class="GtkAction" id="About">
           <property name="label" translatable="yes"
-            context="Menu|Help|">About Dopey</property>
-          <property name="icon-name">gtk-about</property>
+            context="Menu|Help|">About MyPaint</property>
+          <property name="icon-name">mypaint-about-symbolic</property>
           <signal name="activate" handler="about_cb"/>
         </object>
       </child>
@@ -1217,7 +1256,7 @@ Perhaps an increasing amount.
           <!-- FIXME: convert to a ToggleAction -->
           <property name="label" translatable="yes"
             context="Menu|Help|Debug|">Start/Stop Python Profiling (cProfile)</property>
-          <property name="icon-name">gtk-execute</property>
+          <property name="icon-name">mypaint-run-symbolic</property>
           <signal name="activate" handler="start_profiling_cb"/>
         </object>
       </child>
@@ -1250,7 +1289,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkAction" id="Fullscreen">
-          <property name="stock_id">gtk-fullscreen</property>
+          <property name="icon-name">mypaint-fullscreen</property>
           <signal name="activate" handler="fullscreen_cb"/>
         </object>
         <accelerator key="F11"/>
@@ -1258,7 +1297,7 @@ Perhaps an increasing amount.
       <!-- Subwindow hiding and showing -->
       <child>
         <object class="GtkToggleAction" id="PreferencesWindow">
-          <property name="stock_id">gtk-preferences</property>
+          <property name="icon-name">mypaint-options-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Edit|">Preferences</property>
           <signal name="activate" handler="toggle_window_cb"/>
@@ -1273,7 +1312,7 @@ Perhaps an increasing amount.
       <child>
         <object class="GtkToggleAction" id="FrameWindow">
           <property name="label" translatable="yes">Document Frame...</property>
-          <property name="stock_id">gtk-page-setup</property>
+          <property name="icon-name">mypaint-frame-symbolic</property>
           <property name="tooltip"
             translatable="yes">Set and adjust a frame for the canvas</property>
           <signal name="activate" handler="toggle_window_cb"/>
@@ -1281,7 +1320,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkToggleAction" id="LayersTool">
-          <property name="icon-name">mypaint-tool-layers</property>
+          <property name="icon-name">mypaint-layers-symbolic</property>
           <property name="label" translatable="yes">Layers Window</property>
           <property name="tooltip"
             translatable="yes">Arrange layers, or assign layer effects</property>
@@ -1291,9 +1330,9 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkToggleAction" id="BackgroundWindow">
-          <property name="icon-name">gtk-page-setup</property>
+          <property name="icon-name">mypaint-document-properties-symbolic</property>
           <property name="label" translatable="yes"
-            context="Menu|Layer|">Choose Background</property>
+            context="Menu|Layer|">Choose Background...</property>
           <property name="tooltip" translatable="yes"
             >Choose a background image</property>
           <signal name="activate" handler="toggle_window_cb"/>
@@ -1301,7 +1340,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkToggleAction" id="BrushEditorWindow">
-          <property name="stock_id">gtk-properties</property>
+          <property name="icon-name">mypaint-options-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Brush|">Edit Brush Settings</property>
           <property name="tooltip" translatable="yes"
@@ -1312,7 +1351,7 @@ Perhaps an increasing amount.
       </child>
       <child>
         <object class="GtkToggleAction" id="BrushIconEditorWindow">
-          <property name="stock_id">image-x-generic</property>
+          <property name="icon-name">mypaint-options-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Brush|">Edit Icon</property>
           <property name="tooltip" translatable="yes"
@@ -1384,7 +1423,7 @@ The circular slices are equiluminant.</property>
       </child>
       <child>
         <object class="GtkToggleAction" id="ScratchpadTool">
-          <property name="icon-name">mypaint-tool-scratchpad</property>
+          <property name="icon-name">mypaint-scratchpad-symbolic</property>
           <property name="label" translatable="yes"
             context="Menu|Scratchpad|">Scratchpad Window</property>
           <property name="tooltip" translatable="yes"
@@ -1406,7 +1445,7 @@ The circular slices are equiluminant.</property>
       </child>
       <child>
         <object class="GtkToggleAction" id="PreviewTool">
-          <property name="icon-name">mypaint-tool-preview-window</property>
+          <property name="icon-name">mypaint-view-symbolic</property>
           <property name="label" translatable="yes">Preview</property>
           <property name="tooltip" translatable="yes"
             >Show preview of the whole drawing area</property>
@@ -1416,7 +1455,7 @@ The circular slices are equiluminant.</property>
       </child>
       <child>
         <object class="GtkToggleAction" id="ModeOptionsTool">
-          <property name="icon-name">mypaint-brush-mods-active</property>
+          <property name="icon-name">mypaint-options-symbolic</property>
           <property name="label" translatable="yes">Options for Current Mode</property>
           <property name="tooltip" translatable="yes"
             >Allows options to be set for the current mode</property>
@@ -1488,7 +1527,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Freehand Drawing</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Freehand</property>
-          <property name="icon-name">mypaint-line-mode-freehand</property>
+          <property name="icon-name">mypaint-brush-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Draw and paint freely, without geometric constraints</property>
           <property name="value">1</property>
@@ -1500,7 +1539,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipSwitchableFreehandMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|">Freehand Drawing</property>
-          <property name="icon-name">mypaint-line-mode-freehand</property>
+          <property name="icon-name">mypaint-brush-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
         <accelerator key="p"/><!-- "pencil", or "paint" -->
@@ -1511,7 +1550,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Scroll View</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Scroll</property>
-          <property name="icon-name">mypaint-view-pan</property>
+          <property name="icon-name">mypaint-view-pan-symbolic</property>
           <property name="tooltip" translatable="yes"
             >View the canvas at a different position</property>
           <property name="group">SwitchableFreehandMode</property>
@@ -1522,7 +1561,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipPanViewMode">
           <property name="label" translatable="yes"
             context="Menu|View|">Scroll</property>
-          <property name="icon-name">mypaint-view-pan</property>
+          <property name="icon-name">mypaint-view-pan-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
       </child>
@@ -1532,7 +1571,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Rotate View</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Rotate</property>
-          <property name="icon-name">mypaint-view-rotate</property>
+          <property name="icon-name">mypaint-view-rotate-symbolic</property>
           <property name="tooltip" translatable="yes"
             >View the canvas at a different angle</property>
           <property name="group">PanViewMode</property>
@@ -1543,7 +1582,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipRotateViewMode">
           <property name="label" translatable="yes"
             context="Menu|View|">Rotate</property>
-          <property name="icon-name">mypaint-view-rotate</property>
+          <property name="icon-name">mypaint-view-rotate-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
       </child>
@@ -1553,7 +1592,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Zoom View</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Zoom</property>
-          <property name="icon-name">mypaint-view-zoom</property>
+          <property name="icon-name">mypaint-view-zoom-symbolic</property>
           <property name="tooltip" translatable="yes"
             >View the canvas at a different zoom</property>
           <property name="group">RotateViewMode</property>
@@ -1564,7 +1603,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipZoomViewMode">
           <property name="label" translatable="yes"
             context="Menu|View|">Zoom</property>
-          <property name="icon-name">mypaint-view-zoom</property>
+          <property name="icon-name">mypaint-view-zoom-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
       </child>
@@ -1574,7 +1613,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Lines and Curves</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Lines</property>
-          <property name="icon-name">mypaint-line-mode-straight</property>
+          <property name="icon-name">mypaint-lines-and-curves-symbolic</property>
           <property name="tooltip" translatable="yes"
               >Draw straight or curved lines</property>
           <property name="group">ZoomViewMode</property>
@@ -1585,7 +1624,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipStraightMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|">Lines and Curves</property>
-          <property name="icon-name">mypaint-line-mode-straight</property>
+          <property name="icon-name">mypaint-lines-and-curves-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
         <accelerator key="k"/> <!-- Lines and, um, Kurves. -->
@@ -1596,7 +1635,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Connected Lines</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Line Seq.</property>
-          <property name="icon-name">mypaint-line-mode-sequence</property>
+          <property name="icon-name">mypaint-line-sequence-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Draw sequences of straight or curved lines</property>
           <property name="group">StraightMode</property>
@@ -1607,7 +1646,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipSequenceMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|">Connected Lines</property>
-          <property name="icon-name">mypaint-line-mode-sequence</property>
+          <property name="icon-name">mypaint-line-sequence-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
         <accelerator key="j"/> <!-- next to k, on my keyboard -->
@@ -1618,7 +1657,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Ellipses and Circles</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Ellipse</property>
-          <property name="icon-name">mypaint-line-mode-ellipse</property>
+          <property name="icon-name">mypaint-ellipse-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Draw whole circles and ellipses</property>
           <property name="group">SequenceMode</property>
@@ -1629,7 +1668,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipEllipseMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|">Ellipses and Circles</property>
-          <property name="icon-name">mypaint-line-mode-ellipse</property>
+          <property name="icon-name">mypaint-ellipse-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
         <accelerator key="o"/> <!-- *looks* like a circle -->
@@ -1638,7 +1677,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkRadioAction" id="LayerMoveMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|Current Mode|">Move Layer</property>
-          <property name="icon-name">mypaint-tool-move-layer</property>
+          <property name="icon-name">mypaint-move-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Reposition the current layer on the canvas</property>
           <property name="group">EllipseMode</property>
@@ -1649,7 +1688,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipLayerMoveMode">
           <property name="label" translatable="yes"
             context="Menu|Layer|">Move</property>
-          <property name="icon-name">mypaint-tool-move-layer</property>
+          <property name="icon-name">mypaint-move-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
       </child>
@@ -1659,7 +1698,7 @@ The circular slices are equiluminant.</property>
             context="Menu|Edit|Current Mode|">Edit Frame</property>
           <property name="short-label" translatable="yes"
             context="Toolbar|">Frame</property>
-          <property name="icon-name">mypaint-frame</property>
+          <property name="icon-name">mypaint-frame-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Define a frame around the document to give it a finite size</property>
           <property name="group">LayerMoveMode</property>
@@ -1670,7 +1709,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipFrameEditMode">
           <property name="label" translatable="yes"
             context="Menu|File|">Edit Frame</property>
-          <property name="icon-name">mypaint-frame</property>
+          <property name="icon-name">mypaint-frame-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
       </child>
@@ -1679,7 +1718,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkRadioAction" id="ColorPickMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|Current Mode|">Pick Color</property>
-          <property name="icon-name">gtk-color-picker</property>
+          <property name="icon-name">mypaint-pick-color-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Set the color from the screen</property>
           <property name="group">FrameEditMode</property>
@@ -1690,7 +1729,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipColorPickMode">
           <property name="label" translatable="yes"
             context="Menu|Color|">Pick Color</property>
-          <property name="icon-name">gtk-color-picker</property>
+          <property name="icon-name">mypaint-pick-color-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
         <accelerator key="r"/>
@@ -1700,7 +1739,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkRadioAction" id="FloodFillMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|Current Mode|">Flood Fill</property>
-          <property name="icon-name">mypaint-tool-flood-fill</property>
+          <property name="icon-name">mypaint-fill-symbolic</property>
           <property name="tooltip" translatable="yes"
             >Fill an area with color</property>
           <property name="group">ColorPickMode</property>
@@ -1711,7 +1750,7 @@ The circular slices are equiluminant.</property>
         <object class="GtkAction" id="FlipFloodFillMode">
           <property name="label" translatable="yes"
             context="Menu|Edit|">Flood Fill</property>
-          <property name="icon-name">mypaint-tool-flood-fill</property>
+          <property name="icon-name">mypaint-fill-symbolic</property>
           <signal name="activate" handler="mode_flip_action_activated_cb"/>
         </object>
       </child>

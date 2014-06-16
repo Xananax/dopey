@@ -17,6 +17,7 @@ import traceback
 from os.path import join
 from cStringIO import StringIO
 import xml.etree.ElementTree as ET
+from warnings import warn
 import logging
 logger = logging.getLogger(__name__)
 
@@ -36,16 +37,16 @@ import stroke
 import layer
 import brush
 import animation
+from observable import event
 
 ## Module constants
+
+DEFAULT_RESOLUTION = 72
 
 # Sizes
 N = tiledsurface.N
 LOAD_CHUNK_SIZE = 64*1024
 
-# Compositing
-from layer import DEFAULT_COMPOSITE_OP
-from layer import VALID_COMPOSITE_OPS
 
 ## Class defs
 
@@ -58,60 +59,218 @@ class SaveLoadError(Exception):
     pass
 
 
-class Document():
-    """
-    This is the "model" in the Model-View-Controller design.
-    (The "view" would be ../gui/tileddrawwidget.py.)
-    It represents everything that the user would want to save.
+class DeprecatedAPIWarning (UserWarning):
+    pass
 
 
-    The "controller" mostly in drawwindow.py.
-    It is possible to use it without any GUI attached (see ../tests/)
+class Document (object):
+    """In-memory representation of everything to be worked on & saved
+
+    This is the "model" in the Model-View-Controller design for the
+    drawing canvas. The View mostly resides in `gui.tileddrawwidget`,
+    and the Controller is mostly in `gui.document` and
+    `gui.canvasevent`.
+
+    The model contains everything that the user would want to save. It
+    is possible to use the model without any GUI attached (see
+    ``../tests/``).
     """
     # Please note the following difficulty with the undo stack:
     #
     #   Most of the time there is an unfinished (but already rendered)
     #   stroke pending, which has to be turned into a command.Action
     #   or discarded as empty before any other action is possible.
-    #   (split_stroke)
 
-    def __init__(self, brushinfo=None):
+    ## Class constants
+
+    TEMPDIR_STUB_NAME = "mypaint"
+
+    #: Debugging toggle. If True, New and Load and Remove Layer will create a
+    #: new blank painting layer if they empty out the document.
+    CREATE_PAINTING_LAYER_IF_EMPTY = True
+
+    ## Initialization and cleanup
+
+    def __init__(self, brushinfo=None, painting_only=False):
+        """Initialize
+
+        :param brushinfo: the lib.brush.BrushInfo instance to use
+        :param painting_only: only use painting layers
+
+        If painting_only is true, then no tempdir will be created by the
+        document when it is initialized or cleared.
+        """
+        object.__init__(self)
         if not brushinfo:
             brushinfo = brush.BrushInfo()
             brushinfo.load_defaults()
-        self.layers = []
+        self._layers = layer.RootLayerStack(self)
+        self._layers.layer_content_changed += self._canvas_modified_cb
         self.brush = brush.Brush(brushinfo)
         self.ani = animation.Animation(self)
 
         self.brush.brushinfo.observers.append(self.brushsettings_changed_cb)
         self.stroke = None
-        self.canvas_observers = []  #: See `layer_modified_cb()`
-        self.stroke_observers = [] #: See `split_stroke()`
         self.doc_observers = [] #: See `call_doc_observers()`
         self.frame_observers = []
-        self.command_stack_observers = []
         self.symmetry_observers = []  #: See `set_symmetry_axis()`
-        self.__symmetry_axis = None
-        self.default_background = (255, 255, 255)
-        self.clear(True)
+        self._symmetry_axis = None
+        self.command_stack = command.CommandStack()
+        self._painting_only = painting_only
+        self._tempdir = None
 
+        # Optional page area and resolution information
         self._frame = [0, 0, 0, 0]
         self._frame_enabled = False
+        self._xres = None
+        self._yres = None
 
-        # Used by move_frame() to accumulate values
-        self._frame_dx = 0.0
-        self._frame_dy = 0.0
+        # Backgrounds for rendering
+        blank_arr = numpy.zeros((N, N, 4), dtype='uint16')
+        self._blank_bg_surface = tiledsurface.Background(blank_arr)
+
+        # Compatibility
+        self.layers = _LayerStackMapping(self)
+
+        self.clear()
+
+    def __repr__(self):
+        bbox = self.get_bbox()
+        nlayers = len(list(self.layer_stack.deepenumerate()))
+        return ("<Document nlayers=%d bbox=%r paintonly=%r>" %
+                (nlayers, bbox, self._painting_only))
+
+    ## Layer stack access
 
 
-    ## Layer (x, y) position
+    @property
+    def layer_stack(self):
+        return self._layers
+        # TODO: rename this to just "layers" one day.
 
 
-    def move_current_layer(self, dx, dy):
-        layer = self.layers[self.layer_idx]
-        layer.translate(dx, dy)
+    ## Backwards API compat
+
+    @property
+    def layer_idx(self):
+        return self.layers.layer_idx
+
+    @layer_idx.setter
+    def layer_idx(self, value):
+        self.layers.layer_idx = value
+
+    def get_current_layer(self):
+        warn("Use doc.layer_stack.get_current() instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        return self._layers.get_current()
+
+    def set_background(self, *args, **kwargs):
+        warn("Use doc.layer_stack.set_background instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        self._layers.set_background(*args, **kwargs)
+
+    @property
+    def layer(self):
+        """Compatibility hack - access the current layer"""
+        warn("Use doc.layer_stack.current instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        return self._layers.current
+
+    ## Working-doc tempdir
+
+
+    def _create_tempdir(self):
+        """Internal: creates the working-document tempdir"""
+        if self._painting_only:
+            return
+        assert self._tempdir is None
+        tempdir = tempfile.mkdtemp(self.TEMPDIR_STUB_NAME)
+        if not isinstance(tempdir, unicode):
+            tempdir = tempdir.decode(sys.getfilesystemencoding())
+        logger.debug("Created working-doc tempdir %r", tempdir)
+        self._tempdir = tempdir
+
+
+    def _cleanup_tempdir(self):
+        """Internal: recursively delete the working-document tempdir"""
+        if self._painting_only:
+            return
+        assert self._tempdir is not None
+        tempdir = self._tempdir
+        self._tempdir = None
+        for root, dirs, files in os.walk(tempdir, topdown=False):
+            for name in files:
+                tempfile = os.path.join(root, name)
+                try:
+                    os.remove(tempfile)
+                except OSError, err:
+                    logger.warning("Cannot remove %r: %r", tempfile, err)
+            for name in dirs:
+                subtemp = os.path.join(root, name)
+                try:
+                    os.rmdir(subtemp)
+                except OSError, err:
+                    logger.warning("Cannot rmdir %r: %r", subtemp, err)
+        try:
+            os.rmdir(tempdir)
+        except OSError, err:
+            logger.warning("Cannot rmdir %r: %r", subtemp, err)
+        if os.path.exists(tempdir):
+            logger.error("Failed to remove working-doc tempdir %r", tempdir)
+        else:
+            logger.debug("Successfully removed working-doc tempdir %r", tempdir)
+
+
+    def cleanup(self):
+        """Cleans up any persistent state belonging to the document.
+
+        Currently this just removes the working-document tempdir. This method
+        is called by the main app's exit routine after confirmation.
+        """
+        self._cleanup_tempdir()
 
 
     ## Document frame
+
+
+    def get_resolution(self):
+        """Returns the document model's nominal resolution
+
+        The OpenRaster format saves resolution information in both vertical and
+        horizontal resolutions, but MyPaint does not support this at present.
+        This method returns the a unidirectional document resolution in pixels
+        per inch; this is the user-chosen factor that UI controls should use
+        when converting real-world measurements in frames, fonts, and other
+        objects to document pixels.
+
+        Note that the document resolution has no direct relation to screen
+        pixels or printed dots.
+        """
+        if self._xres and self._yres:
+            return max(1, max(self._xres, self._yres))
+        else:
+            return DEFAULT_RESOLUTION
+
+
+    def set_resolution(self, res):
+        """Sets the document model's nominal resolution
+
+        The OpenRaster format saves resolution information in both vertical and
+        horizontal resolutions, but MyPaint does not support this at present.
+        This method sets the document resolution in pixels per inch in both
+        directions.
+
+        Note that the document resolution has no direct relation to screen
+        pixels or printed dots.
+        """
+        if res is not None:
+            res = int(res)
+            res = max(1, res)
+        # Maybe. Using 72 as a fake null would be pretty weird.
+        #if res == DEFAULT_RESOLUTION:
+        #    res = None
+        self._xres = res
+        self._yres = res
 
 
     def get_frame(self):
@@ -161,7 +320,8 @@ class Document():
 
 
     def set_frame_to_current_layer(self, user_initiated=False):
-        x, y, w, h = self.get_current_layer().get_bbox()
+        current = self.layer_stack.current
+        x, y, w, h = current.get_bbox()
         self.update_frame(x, y, w, h, user_initiated=user_initiated)
 
 
@@ -170,7 +330,7 @@ class Document():
         self.update_frame(x, y, w, h, user_initiated=user_initiated)
 
 
-    def trim_layer(self):
+    def trim_current_layer(self):
         """Trim the current layer to the extent of the document frame
 
         This has no effect if the frame is not currently enabled.
@@ -208,7 +368,7 @@ class Document():
     def get_symmetry_axis(self):
         """Gets the active painting symmetry X axis value.
         """
-        return self.__symmetry_axis
+        return self._symmetry_axis
 
 
     def set_symmetry_axis(self, x):
@@ -218,66 +378,46 @@ class Document():
         registered `symmetry_observers` are called without arguments.
         """
         # TODO: make this undoable?
-        for layer in self.layers:
+        for layer in self._layers.deepiter():
             layer.set_symmetry_axis(x)
-        self.__symmetry_axis = x
+        self._symmetry_axis = x
         for func in self.symmetry_observers:
             func()
 
 
-    def clear(self, init=False):
-        self.split_stroke()
-        self.set_symmetry_axis(None)
-        if not init:
-            bbox = self.get_bbox()
-        # throw everything away, including undo stack
+    ## Misc actions
 
-        self.command_stack = command.CommandStack()
-        self.command_stack.stack_observers = self.command_stack_observers
-        self.set_background(self.default_background)
-        self.layers = []
-        self.layer_idx = None
-        self.add_layer(0)
-        # disallow undo of the first layer
-        self.command_stack.clear()
-        self.unsaved_painting_time = 0.0
+    def clear(self):
+        """Clears everything, and resets the command stack
 
-        if not init:
-            for f in self.canvas_observers:
-                f(*bbox)
-
-        self.ani.clear_xsheet(init)
-        self.call_doc_observers()
-
-    def get_current_layer(self):
-        return self.layers[self.layer_idx]
-    layer = property(get_current_layer)
-
-
-    def split_stroke(self):
-        """Splits the current stroke, announcing the newly stacked stroke
-
-        The stroke being drawn is pushed onto to the command stack and the
-        callbacks in the list `self.stroke_observers` are invoked with two
-        arguments: the newly completed stroke, and the brush used. The brush
-        argument is a temporary read-only convenience object.
-
-        This is called every so often when drawing a single long brushstroke on
-        input to allow parts of a long line to be undone.
-
+        This results in a document consisting of
+        one newly created blank drawing layer,
+        an empty undo history,
+        and a new empty working-document temp directory.
+        Clearing the document also generates a full redraw,
+        and resets the frame and the stored resolution.
         """
-        if not self.stroke: return
-        self.stroke.stop_recording()
-        if not self.stroke.empty:
-            cmd = command.Stroke(self, self.stroke,
-                                 self.snapshot_before_stroke)
-            self.command_stack.do(cmd)
-            del self.snapshot_before_stroke
-            self.unsaved_painting_time += self.stroke.total_painting_time
-            for f in self.stroke_observers:
-                f(self.stroke, self.brush)
-        self.stroke = None
-
+        self.flush_updates()
+        self.set_symmetry_axis(None)
+        prev_area = self.get_full_redraw_bbox()
+        if self._tempdir is not None:
+            self._cleanup_tempdir()
+        self._create_tempdir()
+        self.command_stack.clear()
+        self._layers.clear()
+        if self.CREATE_PAINTING_LAYER_IF_EMPTY:
+            self.add_layer((-1,))
+            self._layers.current_path = (0,)
+            self.command_stack.clear()
+        else:
+            self._layers.current_path = None
+        self.unsaved_painting_time = 0.0
+        self._frame = [0, 0, 0, 0]
+        self._frame_enabled = False
+        self._xres = None
+        self._yres = None
+        self.canvas_area_modified(*prev_area)
+        self.call_frame_observers()
 
     def brushsettings_changed_cb(self, settings, lightweight_settings=set([
             'radius_logarithmic', 'color_h', 'color_s', 'color_v',
@@ -288,35 +428,69 @@ class Document():
         # don't create a new undo step. (And thus also no separate pickable
         # stroke in the strokemap.)
         if settings - lightweight_settings:
-            self.split_stroke()
+            self.flush_updates()
 
-    def select_layer(self, idx):
-        self.do(command.SelectLayer(self, idx))
+    def select_layer(self, index=None, path=None, layer=None):
+        """Selects a layer undoably"""
+        layers = self.layer_stack
+        sel_path = layers.canonpath(index=index, path=path, layer=layer,
+                                    usecurrent=False, usefirst=True)
+        self.do(command.SelectLayer(self, path=sel_path))
 
-    def record_layer_move(self, layer, dx, dy):
-        layer_idx = self.layers.index(layer)
-        self.do(command.MoveLayer(self, layer_idx, dx, dy, True))
 
-    def move_layer(self, was_idx, new_idx, select_new=False):
-        self.do(command.ReorderSingleLayer(self, was_idx, new_idx, select_new))
+    ## Layer stack (z-order and grouping)
 
-    def duplicate_layer(self, insert_idx=None, name=''):
-        self.do(command.DuplicateLayer(self, insert_idx, name))
+    def restack_layer(self, src_path, targ_path):
+        """Moves a layer within the layer stack by path, undoably
 
-    def reorder_layers(self, new_layers):
-        self.do(command.ReorderLayers(self, new_layers))
+        :param tuple src_path: path of the layer to be moved
+        :param tuple targ_path: target insert path
 
-    def clear_layer(self):
-        if not self.layer.is_empty():
-            self.do(command.ClearLayer(self))
+        The source path must identify an existing layer. The target
+        path must be a valid insertion path at the time this method is
+        called.
+        """
+        logger.debug("Restack layer at %r to %r", src_path, targ_path)
+        cmd = command.RestackLayer(self, src_path, targ_path)
+        self.do(cmd)
+
+    def bubble_current_layer_up(self):
+        """Moves the current layer up in the stack (undoable)"""
+        cmd = command.BubbleLayerUp(self)
+        self.do(cmd)
+
+    def bubble_current_layer_down(self):
+        """Moves the current layer down in the stack (undoable)"""
+        cmd = command.BubbleLayerDown(self)
+        self.do(cmd)
+
+
+    ## Misc layer command frontends
+
+    def duplicate_current_layer(self):
+        """Makes an exact copy of the current layer (undoable)"""
+        self.do(command.DuplicateLayer(self))
+
+
+    def clear_current_layer(self):
+        """Clears the current layer (undoable)"""
+        rootstack = self.layer_stack
+        can_clear = (rootstack.current is not rootstack
+                     and not rootstack.current.is_empty())
+        if not can_clear:
+            return
+        self.do(command.ClearLayer(self))
+
+
+    ## Drawing/painting strokes
 
 
     def stroke_to(self, dtime, x, y, pressure, xtilt, ytilt):
         """Draws a stroke to the current layer with the current brush.
 
         This is called by GUI code in response to motion events on the canvas -
-        both with and without pressure. If enough time has elapsed,
-        `split_stroke()` is called.
+        both with and without pressure. If enough time has elapsed, an input
+        flush is requested (see `flush_updates()`).
 
         :param self:
             This is an object method.
@@ -335,29 +509,30 @@ class Document():
             Y-axis tilt, ranging from -1.0 to 1.0.
 
         """
-        if not self.stroke:
-            self.stroke = stroke.Stroke()
-            self.stroke.start_recording(self.brush)
-            self.snapshot_before_stroke = self.layer.save_snapshot()
-        self.stroke.record_event(dtime, x, y, pressure, xtilt, ytilt)
-
-        split = self.layer.stroke_to(self.brush, x, y,
-                                pressure, xtilt, ytilt, dtime)
-
+        warn("Use a gui.canvasevent.BrushworkModeMixin's stroke_to() "
+             "instead", DeprecatedAPIWarning, stacklevel=2)
+        current_layer = self._layers.current
+        if not current_layer.get_paintable():
+            split = True
+        else:
+            if not self.stroke:
+                self.stroke = stroke.Stroke()
+                self.stroke.start_recording(self.brush)
+                self.snapshot_before_stroke = current_layer.save_snapshot()
+            self.stroke.record_event(dtime, x, y, pressure, xtilt, ytilt)
+            split = current_layer.stroke_to(self.brush, x, y,
+                                            pressure, xtilt, ytilt, dtime)
         if split:
-            self.split_stroke()
+            self.flush_updates()
 
-
-    def redo_last_stroke_with_different_brush(self, brush):
+    def redo_last_stroke_with_different_brush(self, brushinfo):
         cmd = self.get_last_command()
-        if not isinstance(cmd, command.Stroke):
+        if not isinstance(cmd, command.Brushwork):
             return
-        cmd = self.undo()
-        assert isinstance(cmd, command.Stroke)
-        new_stroke = cmd.stroke.copy_using_different_brush(brush)
-        snapshot_before = self.layer.save_snapshot()
-        new_stroke.render(self.layer._surface)
-        self.do(command.Stroke(self, new_stroke, snapshot_before))
+        cmd.update(brushinfo=brushinfo)
+
+
+    ## Other painting/drawing
 
 
     def flood_fill(self, x, y, color, tolerance=0.1,
@@ -370,21 +545,25 @@ class Document():
         :type color: tuple
         :param tolerance: How much filled pixels are permitted to vary
         :type tolerance: float [0.0, 1.0]
-        :param sample_merged: Use all visible layers instead of just current
+        :param sample_merged: Use all visible layers when sampling
         :type sample_merged: bool
-        :param make_new_layer: Write output to a new layer above the current
+        :param make_new_layer: Write output to a new layer on top
         :type make_new_layer: bool
 
-        Filling an infinite canvas requires limits. If the frame is enabled,
-        this limits the maximum size of the fill, and filling outside the frame
-        is not possible.
+        Filling an infinite canvas requires limits. If the frame is
+        enabled, this limits the maximum size of the fill, and filling
+        outside the frame is not possible.
 
-        Otherwise, if the entire document is empty, the limits are dynamic.
-        Initially only a single tile will be filled. This can then form one
-        corner for the next fill's limiting rectangle. This is a little quirky,
-        but allows big areas to be filled rapidly as needed on blank layers.
+        Otherwise, if the entire document is empty, the limits are
+        dynamic.  Initially only a single tile will be filled. This can
+        then form one corner for the next fill's limiting rectangle.
+        This is a little quirky, but allows big areas to be filled
+        rapidly as needed on blank layers.
         """
         bbox = helpers.Rect(*tuple(self.get_effective_bbox()))
+        rootstack = self.layer_stack
+        if not self.layer_stack.current.get_fillable():
+            make_new_layer = True
         if bbox.empty():
             bbox = helpers.Rect()
             bbox.x = N*int(x//N)
@@ -398,77 +577,109 @@ class Document():
         self.do(cmd)
 
 
-    def layer_modified_cb(self, *args):
-        """Forwards region modify notifications (area invalidations)
+    ## Graphical refresh
 
-        GUI code can respond to these notifications by appending callbacks to
-        `self.canvas_observers`. Each callback is invoked with the bounding box
-        of the changed region: ``cb(x, y, w, h)``, or ``cb(0, 0, 0, 0)`` to
-        denote that everything needs to be redrawn.
+    def _canvas_modified_cb(self, root, layer, x, y, w, h):
+        """Internal callback: forwards redraw nofifications"""
+        self.canvas_area_modified(x, y, w, h)
+
+    @event
+    def canvas_area_modified(self, x, y, w, h):
+        """Event: canvas was updated, either within a rectangle or fully
+
+        :param x: top-left x coordinate for the redraw bounding box
+        :param y: top-left y coordinate for the redraw bounding box
+        :param w: width of the redraw bounding box, or 0 for full redraw
+        :param h: height of the redraw bounding box, or 0 for full redraw
+
+        This event method is invoked to notify observers about needed redraws
+        originating from within the model, e.g. painting, fills, or layer
+        moves. It is also used to notify about the entire canvas needing to be
+        redrawn. In the latter case, the `w` or `h` args forwarded to
+        registered observers is zero.
 
         See also: `invalidate_all()`.
-
         """
-        # for now, any layer modification is assumed to be visible
-        for f in self.canvas_observers:
-            f(*args)
-
+        pass
 
     def invalidate_all(self):
-        """Marks everything as invalid.
+        """Marks everything as invalid"""
+        self.canvas_area_modified(0, 0, 0, 0)
 
-        Invokes the callbacks in `self.canvas_observers` passing the notation
-        for "everything" as arguments. See `layer_modified_cb()` for details.
 
+    ## Undo/redo command stack
+
+    @event
+    def flush_updates(self):
+        """Reqests flushing of all pending document updates
+
+        This `lib.observable.event` is called whan pending updates
+        should be flushed into the working document completely.
+        Attached observers are expected to react by writing pending
+        changes to the layers stack, and pushing an appropriate command
+        onto the command stack using `do()`.
         """
-        for f in self.canvas_observers:
-            f(0, 0, 0, 0)
-
 
     def undo(self):
-        self.split_stroke()
+        self.flush_updates()
         while 1:
             cmd = self.command_stack.undo()
             if not cmd or not cmd.automatic_undo:
                 return cmd
 
     def redo(self):
-        self.split_stroke()
+        self.flush_updates()
         while 1:
             cmd = self.command_stack.redo()
             if not cmd or not cmd.automatic_undo:
                 return cmd
 
     def do(self, cmd):
-        self.split_stroke()
+        self.flush_updates()
         self.command_stack.do(cmd)
 
 
     def update_last_command(self, **kwargs):
-        self.split_stroke()
+        self.flush_updates()
         return self.command_stack.update_last_command(**kwargs)
 
 
     def get_last_command(self):
-        self.split_stroke()
+        self.flush_updates()
         return self.command_stack.get_last_command()
 
 
-    def get_bbox(self):
-        """Returns the dynamic bounding box of the document.
+    ## Utility methods
 
-        This is currently the union of all the bounding boxes of all of the
-        layers. It disregards the user-chosen frame.
+    def get_bbox(self):
+        """Returns the data bounding box of the document
+
+        This is currently the union of all the data bounding boxes of all of
+        the layers. It disregards the user-chosen frame.
 
         """
         res = helpers.Rect()
-        for layer in self.layers:
+        for layer in self.layer_stack.deepiter():
             # OPTIMIZE: only visible layers...
             # careful: currently saving assumes that all layers are included
             bbox = layer.get_bbox()
             res.expandToIncludeRect(bbox)
         return res
 
+    def get_full_redraw_bbox(self):
+        """Returns the full-redraw bounding box of the document
+
+        This is the same concept as `layer.BaseLayer.get_full_redraw_bbox()`,
+        and is built up from the full-redraw bounding boxes of all layers.
+        """
+        res = helpers.Rect()
+        for layer in self.layer_stack.deepiter():
+            bbox = layer.get_full_redraw_bbox()
+            if bbox.w == 0 and bbox.h == 0: # infinite
+                res = bbox
+            else:
+                res.expandToIncludeRect(bbox)
+        return res
 
     def get_effective_bbox(self):
         """Return the effective bounding box of the document.
@@ -480,62 +691,56 @@ class Document():
         return self.get_frame() if self.frame_enabled else self.get_bbox()
 
 
-    def render_into(self, surface, tiles, mipmap_level=0, layers=None, background=None):
+    ## Rendering tiles
 
-        # TODO: move this loop down in C/C++
-        for tx, ty in tiles:
-            with surface.tile_request(tx, ty, readonly=False) as dst:
-                self.blit_tile_into(dst, False, tx, ty, mipmap_level, layers, background)
-
-    def blit_tile_into(self, dst, dst_has_alpha, tx, ty, mipmap_level=0, layers=None, background=None):
-        assert dst_has_alpha is False
-        if layers is None:
-            layers = self.layers
-        if background is None:
-            background = self.background
-
-        assert dst.shape[-1] == 4
-        if dst.dtype == 'uint8':
-            dst_8bit = dst
-            dst = numpy.empty((N, N, 4), dtype='uint16')
-        else:
-            dst_8bit = None
-
-        background.blit_tile_into(dst, dst_has_alpha, tx, ty, mipmap_level)
-
-        for layer in layers:
-            layer.composite_tile(dst, dst_has_alpha, tx, ty, mipmap_level)
-
-        if dst_8bit is not None:
-            mypaintlib.tile_convert_rgbu16_to_rgbu8(dst, dst_8bit)
-
-    def get_rendered_image_behind_current_layer(self, tx, ty):
-        dst = numpy.empty((N, N, 4), dtype='uint16')
-        l = self.layers[0:self.layer_idx]
-        self.blit_tile_into(dst, False, tx, ty, layers=l)
-        return dst
+    def blit_tile_into( self, dst, dst_has_alpha, tx, ty, mipmap_level=0,
+                        layers=None, background=None ):
+        """Blit composited tiles into a destination surface"""
+        self.layer_stack.blit_tile_into( dst, dst_has_alpha, tx, ty,
+                                         mipmap_level, layers=layers )
 
 
-    def add_layer(self, insert_idx=None, after=None, name=''):
-        self.do(command.AddLayer(self, insert_idx, after, name))
+    ## More layer stack commands
 
 
-    def remove_layer(self,layer=None):
-        self.do(command.RemoveLayer(self, layer))
+    def add_layer(self, path):
+        """Undoably adds a new layer at a specified path"""
+        self.do(command.AddLayer(self, path))
 
+    def remove_current_layer(self):
+        """Delete the current layer"""
+        if not self.layer_stack.current_path:
+            return
+        self.do(command.RemoveLayer(self))
 
-    def rename_layer(self, layer, name):
-        self.do(command.RenameLayer(self, name, layer))
+    def rename_current_layer(self, name):
+        """Rename the current layer"""
+        if not self.layer_stack.current_path:
+            return
+        self.do(command.RenameLayer(self, name))
 
-    def convert_layer_to_normal_mode(self):
-        self.do(command.ConvertLayerToNormalMode(self, self.layer))
+    def normalize_layer_mode(self):
+        """Normalize current layer's mode and opacity"""
+        layers = self.layer_stack
+        self.do(command.NormalizeLayerMode(self, layers.current))
 
-    def merge_layer_down(self):
-        dst_idx = self.layer_idx - 1
-        if dst_idx < 0:
+    def merge_current_layer_down(self):
+        """Merge the current layer into the one below"""
+        rootstack = self.layer_stack
+        cur_path = rootstack.current_path
+        if cur_path is None:
             return False
-        self.do(command.MergeLayer(self, dst_idx))
+        dst_path = rootstack.get_merge_down_target(cur_path)
+        if dst_path is None:
+            logger.info("Merge Down is not possible here")
+            return False
+        self.do(command.MergeLayerDown(self))
         return True
+
+    def merge_visible_layers(self):
+        self.do(command.MergeVisibleLayers(self))
+
+    ## Layer import/export
 
 
     def load_layer_from_pixbuf(self, pixbuf, x=0, y=0):
@@ -553,61 +758,93 @@ class Document():
         return bbox
 
 
+    ## Even more layer command frontends
+
+
     def set_layer_visibility(self, visible, layer):
         """Sets the visibility of a layer."""
+        if layer is self.layer_stack:
+            return
+        cmd_class = command.SetLayerVisibility
         cmd = self.get_last_command()
-        if isinstance(cmd, command.SetLayerVisibility) and cmd.layer is layer:
+        if isinstance(cmd, cmd_class) and cmd.layer is layer:
             self.update_last_command(visible=visible)
         else:
-            self.do(command.SetLayerVisibility(self, visible, layer))
-
+            cmd = cmd_class(self, visible, layer)
+            self.do(cmd)
 
     def set_layer_locked(self, locked, layer):
         """Sets the input-locked status of a layer."""
+        if layer is self.layer_stack:
+            return
+        cmd_class = command.SetLayerLocked
         cmd = self.get_last_command()
-        if isinstance(cmd, command.SetLayerLocked) and cmd.layer is layer:
+        if isinstance(cmd, cmd_class) and cmd.layer is layer:
             self.update_last_command(locked=locked)
         else:
-            self.do(command.SetLayerLocked(self, locked, layer))
+            cmd = cmd_class(self, locked, layer)
+            self.do(cmd)
 
+    def set_current_layer_opacity(self, opacity):
+        """Sets the opacity of the current layer
 
-    def set_layer_opacity(self, opacity, layer=None):
-        """Sets the opacity of a layer.
+        :param float opacity: New layer opacity
+        """
+        current = self.layer_stack.current
+        if current is self.layer_stack:
+            return
+        cmd_class = command.SetLayerOpacity
+        cmd = self.get_last_command()
+        if isinstance(cmd, cmd_class) and cmd.layer is current:
+            logger.debug("Updating current layer opacity: %r", opacity)
+            self.update_last_command(opacity=opacity)
+        else:
+            logger.debug("Setting current layer opacity: %r", opacity)
+            cmd = cmd_class(self, opacity, layer=current)
+            self.do(cmd)
 
-        If layer=None, works on the current layer.
+    def set_current_layer_mode(self, mode):
+        """Sets the combining mode for the current layer
 
+        :param int mode: New layer combining mode to use
+        """
+        # To be honest, I'm not sure this command needs the full
+        # update() mechanism. Modes aren't updated on a continuous
+        # slider, like opacity, and setting a mode feels like a fairly
+        # positive choice.
+        current = self.layer_stack.current
+        if current is self.layer_stack:
+            return
+        cmd_class = command.SetLayerMode
+        cmd = self.get_last_command()
+        if isinstance(cmd, cmd_class) and cmd.layer is current:
+            logger.debug("Updating current layer mode: %r", mode)
+            self.update_last_command(mode=mode)
+        else:
+            logger.debug("Setting current layer mode: %r", mode)
+            cmd = cmd_class(self, mode, layer=current)
+            self.do(cmd)
+
+    def set_layer_stack_isolated(self, isolated, layer=None):
+        """Sets the isolation flag for a layer stack, undoably
+
+        :param isolated: State for the isolated flag
+        :type isolated: bool
+        :param layer: The layer to affect, or None for the current layer.
+        :type layer: lib.layer.Layer
         """
         cmd = self.get_last_command()
-        if isinstance(cmd, command.SetLayerOpacity):
-            self.undo()
-        self.do(command.SetLayerOpacity(self, opacity, layer))
+        if layer is None:
+            layer = self.layer_stack.current
+        if layer is self.layer_stack:
+            return
+        cmd_class = command.SetLayerStackIsolated
+        if isinstance(cmd, cmd_class) and cmd.layer is layer:
+            self.update_last_command(isolated=isolated)
+        else:
+            self.do(cmd_class(self, isolated, layer=layer))
 
-
-    def set_layer_compositeop(self, compositeop, layer=None):
-        """Sets the compositing operator for a layer.
-
-        If layer=None, works on the current layer.
-
-        """
-        if compositeop not in VALID_COMPOSITE_OPS:
-            compositeop = DEFAULT_COMPOSITE_OP
-        cmd = self.get_last_command()
-        if isinstance(cmd, command.SetLayerCompositeOp):
-            self.undo()
-        self.do(command.SetLayerCompositeOp(self, compositeop, layer))
-
-
-    def set_background(self, obj, make_default=False):
-        # This is not an undoable action. One reason is that dragging
-        # on the color chooser would get tons of undo steps.
-        if not isinstance(obj, tiledsurface.Background):
-            if isinstance(obj, GdkPixbuf.Pixbuf):
-                obj = helpers.gdkpixbuf2numpy(obj)
-            obj = tiledsurface.Background(obj)
-        self.background = obj
-        if make_default:
-            self.default_background = obj
-        self.invalidate_all()
+    ## Saving and loading
 
 
     def load_from_pixbuf(self, pixbuf):
@@ -617,37 +854,26 @@ class Document():
         self.set_frame(bbox, user_initiated=False)
 
 
-    def is_layered(self):
-        """True if there are more than one nonempty layers."""
-        count = 0
-        for l in self.layers:
-            if not l.is_empty():
-                count += 1
-        return count > 1
-
-    def is_empty(self):
-        """True if there is only one layer and it is empty."""
-        return len(self.layers) == 1 and self.layer.is_empty()
-
     def save(self, filename, **kwargs):
         """Save the document to a file.
 
-        :param str filename:
-            The filename to save to. The extension is used to determine format,
-            and a ``save_*()`` method is chosen to perform the save.
-        :param dict kwargs:
-            Passed on to the chosen save method.
-        :raise SaveLoadError:
-            The error string will be set to something descriptive and
-            presentable to the user.
+        :param str filename: The filename to save to.
+        :param dict kwargs: Passed on to the chosen save method.
+        :raise SaveLoadError: The error string will be set to something
+          descriptive and presentable to the user.
+        :returns: A thumbnail pixbuf, or None if not supported
+        :rtype: GdkPixbuf
 
+        The filename's extension is used to determine the save format, and a
+        ``save_*()`` method is chosen to perform the save.
         """
-        self.split_stroke()
+        self.flush_updates()
         junk, ext = os.path.splitext(filename)
         ext = ext.lower().replace('.', '')
         save = getattr(self, 'save_' + ext, self._unsupported)
+        result = None
         try:
-            save(filename, **kwargs)
+            result = save(filename, **kwargs)
         except GObject.GError, e:
             traceback.print_exc()
             if e.code == 5:
@@ -659,6 +885,7 @@ class Document():
             traceback.print_exc()
             raise SaveLoadError, _('Unable to save: %s') % e.strerror
         self.unsaved_painting_time = 0.0
+        return result
 
 
     def load(self, filename, **kwargs):
@@ -697,23 +924,18 @@ class Document():
     def _unsupported(self, filename, *args, **kwargs):
         raise SaveLoadError, _('Unknown file format extension: %s') % repr(filename)
 
+
     def render_as_pixbuf(self, *args, **kwargs):
-        return pixbufsurface.render_as_pixbuf(self, *args, **kwargs)
+        warn("Use doc.layer_stack.render_as_pixbuf() instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        return self.layer_stack.render_as_pixbuf(*args, **kwargs)
 
-    def render_thumbnail(self):
+
+    def render_thumbnail(self, **kwargs):
+        """Renders a thumbnail for the effective (frame) bbox"""
         t0 = time.time()
-        x, y, w, h = self.get_effective_bbox()
-        if w == 0 or h == 0:
-            # workaround to save empty documents
-            x, y, w, h = 0, 0, tiledsurface.N, tiledsurface.N
-        mipmap_level = 0
-        while mipmap_level < tiledsurface.MAX_MIPMAP_LEVEL and max(w, h) >= 512:
-            mipmap_level += 1
-            x, y, w, h = x/2, y/2, w/2, h/2
-
-        pixbuf = self.render_as_pixbuf(x, y, w, h, mipmap_level=mipmap_level)
-        assert pixbuf.get_width() == w and pixbuf.get_height() == h
-        pixbuf = helpers.scale_proportionally(pixbuf, 256, 256)
+        bbox = self.get_effective_bbox()
+        pixbuf = self.layer_stack.render_thumbnail(bbox, **kwargs)
         logger.info('Rendered thumbnail in %d seconds.',
                     time.time() - t0)
         return pixbuf
@@ -730,13 +952,8 @@ class Document():
                 l.merge_into(tmp_layer)
             tmp_layer._surface.save(filename, *doc_bbox)
         else:
-            if alpha:
-                tmp_layer = layer.Layer()
-                for l in self.layers:
-                    l.merge_into(tmp_layer)
-                tmp_layer.save_as_png(filename, *doc_bbox)
-            else:
-                pixbufsurface.save_as_png(self, filename, *doc_bbox, alpha=False, **kwargs)
+            self.layer_stack.save_as_png(filename, *doc_bbox, alpha=alpha,
+                                         background=(not alpha), **kwargs)
 
     def save_gif(self, filename, **kwargs):
         return self.ani.save_gif(filename, **kwargs)
@@ -751,7 +968,7 @@ class Document():
         if l[-1].isdigit():
             prefix = l[0]
         doc_bbox = self.get_effective_bbox()
-        for i, l in enumerate(self.layers):
+        for i, l in enumerate(self.layer_stack.deepiter()):
             filename = '%s.%03d%s' % (prefix, i+1, ext)
             l.save_as_png(filename, *doc_bbox, **kwargs)
 
@@ -786,256 +1003,132 @@ class Document():
         x, y, w, h = self.get_effective_bbox()
         if w == 0 or h == 0:
             x, y, w, h = 0, 0, N, N # allow to save empty documents
-        pixbuf = self.render_as_pixbuf(x, y, w, h, **kwargs)
+        pixbuf = self.layer_stack.render_as_pixbuf(x, y, w, h, **kwargs)
         options = {"quality": str(quality)}
         pixbuf.savev(filename, 'jpeg', options.keys(), options.values())
 
+
     save_jpeg = save_jpg
 
+
     def save_ora(self, filename, options=None, **kwargs):
+        """Saves OpenRaster data to a file"""
         logger.info('save_ora: %r (%r, %r)', filename, options, kwargs)
         t0 = time.time()
         tempdir = tempfile.mkdtemp('mypaint')
         if not isinstance(tempdir, unicode):
             tempdir = tempdir.decode(sys.getfilesystemencoding())
-        # use .tmp extension, so we don't overwrite a valid file if there is an exception
-        z = zipfile.ZipFile(filename + '.tmpsave', 'w', compression=zipfile.ZIP_STORED)
-        # work around a permission bug in the zipfile library: http://bugs.python.org/issue3394
+
+        # Use .tmpsave extension, so we don't overwrite a valid file if there
+        # is an exception
+        orazip = zipfile.ZipFile(filename + '.tmpsave', 'w',
+                                 compression=zipfile.ZIP_STORED)
+
+        # work around a permission bug in the zipfile library:
+        # http://bugs.python.org/issue3394
         def write_file_str(filename, data):
             zi = zipfile.ZipInfo(filename)
             zi.external_attr = 0100644 << 16
-            z.writestr(zi, data)
+            orazip.writestr(zi, data)
+
         write_file_str('mimetype', 'image/openraster') # must be the first file
         image = ET.Element('image')
-        stack = ET.SubElement(image, 'stack')
-        x0, y0, w0, h0 = self.get_effective_bbox()
-        a = image.attrib
-        a['w'] = str(w0)
-        a['h'] = str(h0)
+        effective_bbox = self.get_effective_bbox()
+        x0, y0, w0, h0 = effective_bbox
+        image.attrib['w'] = str(w0)
+        image.attrib['h'] = str(h0)
 
-        def store_pixbuf(pixbuf, name):
-            tmp = join(tempdir, 'tmp.png')
-            t1 = time.time()
-            pixbuf.savev(tmp, 'png', [], [])
-            logger.debug('%.3fs pixbuf saving %s', time.time() - t1, name)
-            z.write(tmp, name)
-            os.remove(tmp)
+        # Update the initially-selected flag on all layers
+        layers = self.layer_stack
+        for s_path, s_layer in layers.deepenumerate():
+            selected = (s_path == layers.current_path)
+            s_layer.initially_selected = selected
 
-        def store_surface(surface, name, rect=[]):
-            tmp = join(tempdir, 'tmp.png')
-            t1 = time.time()
-            surface.save_as_png(tmp, *rect, **kwargs)
-            logger.debug('%.3fs surface saving %s', time.time() - t1, name)
-            z.write(tmp, name)
-            os.remove(tmp)
+        # Save the layer stack
+        canvas_bbox = tuple(self.get_bbox())
+        frame_bbox = tuple(effective_bbox)
+        root_stack_path = ()
+        root_stack_elem = self.layer_stack.save_to_openraster(
+                                orazip, tempdir, root_stack_path,
+                                canvas_bbox, frame_bbox, **kwargs )
+        image.append(root_stack_elem)
 
-        def add_layer(x, y, opac, surface, name, layer_name, visible=True,
-                      locked=False, selected=False,
-                      compositeop=DEFAULT_COMPOSITE_OP, rect=[]):
-            layer = ET.Element('layer')
-            stack.append(layer)
-            store_surface(surface, name, rect)
-            a = layer.attrib
-            if layer_name:
-                a['name'] = layer_name
-            a['src'] = name
-            a['x'] = str(x)
-            a['y'] = str(y)
-            a['opacity'] = str(opac)
-            if compositeop not in VALID_COMPOSITE_OPS:
-                compositeop = DEFAULT_COMPOSITE_OP
-            a['composite-op'] = compositeop
-            if visible:
-                a['visibility'] = 'visible'
-            else:
-                a['visibility'] = 'hidden'
-            if locked:
-                a['edit-locked'] = 'true'
-            if selected:
-                a['selected'] = 'true'
-            return layer
+        # Resolution info
+        if self._xres and self._yres:
+            image.attrib["xres"] = str(self._xres)
+            image.attrib["yres"] = str(self._yres)
 
-        for idx, l in enumerate(reversed(self.layers)):
-            if l.is_empty():
-                continue
-            opac = l.opacity
-            x, y, w, h = l.get_bbox()
-            sel = (idx == self.layer_idx)
-            el = add_layer(x-x0, y-y0, opac, l._surface,
-                           'data/layer%03d.png' % idx, l.name, l.visible,
-                           locked=l.locked, selected=sel,
-                           compositeop=l.compositeop, rect=(x, y, w, h))
-
-            # strokemap
-            sio = StringIO()
-            l.save_strokemap_to_file(sio, -x, -y)
-            data = sio.getvalue(); sio.close()
-            name = 'data/layer%03d_strokemap.dat' % idx
-            el.attrib['mypaint_strokemap_v2'] = name
-            write_file_str(name, data)
+        # Version declaration
+        image.attrib["version"] = "0.0.4-pre.1"
 
         ani_data = self.ani.xsheet_as_str()
         write_file_str('animation.xsheet', ani_data)
 
-        # save background as layer (solid color or tiled)
-        bg = self.background
-        # save as fully rendered layer
-        x, y, w, h = self.get_bbox()
-        l = add_layer(x-x0, y-y0, 1.0, bg, 'data/background.png', 'background',
-                      locked=True, selected=False,
-                      compositeop=DEFAULT_COMPOSITE_OP,
-                      rect=(x,y,w,h))
-        x, y, w, h = bg.get_bbox()
-        # save as single pattern (with corrected origin)
-        store_surface(bg, 'data/background_tile.png', rect=(x+x0, y+y0, w, h))
-        l.attrib['background_tile'] = 'data/background_tile.png'
+        # Thumbnail preview (256x256)
+        thumbnail = layers.render_thumbnail(frame_bbox)
+        tmpfile = join(tempdir, 'tmp.png')
+        thumbnail.savev(tmpfile, 'png', [], [])
+        orazip.write(tmpfile, 'Thumbnails/thumbnail.png')
+        os.remove(tmpfile)
 
-        # preview (256x256)
-        t2 = time.time()
-        logger.debug('starting to render full image for thumbnail...')
+        # Save fully rendered image too
+        tmpfile = os.path.join(tempdir, "mergedimage.png")
+        self.layer_stack.save_as_png( tmpfile, *frame_bbox,
+                                      alpha=False, background=True,
+                                      **kwargs )
+        orazip.write(tmpfile, 'mergedimage.png')
+        os.remove(tmpfile)
 
-        thumbnail_pixbuf = self.render_thumbnail()
-        store_pixbuf(thumbnail_pixbuf, 'Thumbnails/thumbnail.png')
-        logger.debug('total %.3fs spent on thumbnail', time.time() - t2)
-
+        # Prettification
         helpers.indent_etree(image)
         xml = ET.tostring(image, encoding='UTF-8')
 
+        # Finalize
         write_file_str('stack.xml', xml)
-        z.close()
+        orazip.close()
         os.rmdir(tempdir)
         if os.path.exists(filename):
             os.remove(filename) # windows needs that
         os.rename(filename + '.tmpsave', filename)
 
         logger.info('%.3fs save_ora total', time.time() - t0)
+        return thumbnail
 
-        return thumbnail_pixbuf
-
-    @staticmethod
-    def __xsd2bool(v):
-        v = str(v).lower()
-        if v in ['true', '1']: return True
-        else: return False
 
     def load_ora(self, filename, feedback_cb=None):
         """Loads from an OpenRaster file"""
         logger.info('load_ora: %r', filename)
         t0 = time.time()
-        tempdir = tempfile.mkdtemp('mypaint')
-        if not isinstance(tempdir, unicode):
-            tempdir = tempdir.decode(sys.getfilesystemencoding())
-        z = zipfile.ZipFile(filename)
-        logger.debug('mimetype: %r', z.read('mimetype').strip())
-        xml = z.read('stack.xml')
-        image = ET.fromstring(xml)
-        stack = image.find('stack')
+        tempdir = self._tempdir
+        orazip = zipfile.ZipFile(filename)
+        logger.debug('mimetype: %r', orazip.read('mimetype').strip())
+        xml = orazip.read('stack.xml')
+        image_elem = ET.fromstring(xml)
+        root_stack_elem = image_elem.find('stack')
+        image_width = max(0, int(image_elem.attrib.get('w', 0)))
+        image_height = max(0, int(image_elem.attrib.get('h', 0)))
+        # Resolution: false value, 0 specifically, means unspecified
+        image_xres = max(0, int(image_elem.attrib.get('xres', 0)))
+        image_yres = max(0, int(image_elem.attrib.get('yres', 0)))
 
-        image_w = int(image.attrib['w'])
-        image_h = int(image.attrib['h'])
+        # Delegate loading of image data to the layers tree itself
+        self.layer_stack.clear()
+        self.layer_stack.load_from_openraster(orazip, root_stack_elem,
+                                              tempdir, feedback_cb, x=0, y=0)
+        assert len(self.layer_stack) > 0
 
-        def get_pixbuf(filename):
-            t1 = time.time()
+        # Set up symmetry axes
+        for path, descendent in self.layer_stack.deepenumerate():
+            descendent.set_symmetry_axis(self.get_symmetry_axis())
 
-            try:
-                fp = z.open(filename, mode='r')
-            except KeyError:
-                # support for bad zip files (saved by old versions of the GIMP ORA plugin)
-                fp = z.open(filename.encode('utf-8'), mode='r')
-                logger.warning('Bad OpenRaster ZIP file. There is an utf-8 '
-                               'encoded filename that does not have the '
-                               'utf-8 flag set: %r', filename)
-
-            res = self._pixbuf_from_stream(fp, feedback_cb)
-            fp.close()
-            logger.debug('%.3fs loading pixbuf %s', time.time() - t1, filename)
-            return res
-
-        def get_layers_list(root, x=0,y=0):
-            res = []
-            for item in root:
-                if item.tag == 'layer':
-                    if 'x' in item.attrib:
-                        item.attrib['x'] = int(item.attrib['x']) + x
-                    if 'y' in item.attrib:
-                        item.attrib['y'] = int(item.attrib['y']) + y
-                    res.append(item)
-                elif item.tag == 'stack':
-                    stack_x = int( item.attrib.get('x', 0) )
-                    stack_y = int( item.attrib.get('y', 0) )
-                    res += get_layers_list(item, stack_x, stack_y)
-                else:
-                    logger.warning('ignoring unsupported tag %r', item.tag)
-            return res
-
-        self.clear() # this leaves one empty layer
-        no_background = True
-
-        selected_layer = None
-        for layer in get_layers_list(stack):
-            a = layer.attrib
-
-            if 'background_tile' in a:
-                assert no_background
-                try:
-                    logger.debug("background tile: %r", a['background_tile'])
-                    self.set_background(get_pixbuf(a['background_tile']))
-                    no_background = False
-                    continue
-                except tiledsurface.BackgroundError, e:
-                    logger.warning('ORA background tile not usable: %r', e)
-
-            src = a.get('src', '')
-            if not src.lower().endswith('.png'):
-                logger.warning('Ignoring non-png layer %r', src)
-                continue
-            name = a.get('name', '')
-            x = int(a.get('x', '0'))
-            y = int(a.get('y', '0'))
-            opac = float(a.get('opacity', '1.0'))
-            compositeop = str(a.get('composite-op', DEFAULT_COMPOSITE_OP))
-            if compositeop not in VALID_COMPOSITE_OPS:
-                compositeop = DEFAULT_COMPOSITE_OP
-            selected = self.__xsd2bool(a.get("selected", 'false'))
-            locked = self.__xsd2bool(a.get("edit-locked", 'false'))
-
-            visible = not 'hidden' in a.get('visibility', 'visible')
-            self.add_layer(insert_idx=0, name=name)
-            t1 = time.time()
-
-            # extract the png form the zip into a file first
-            # the overhead for doing so seems to be neglegible (around 5%)
-            z.extract(src, tempdir)
-            tmp_filename = join(tempdir, src)
-            self.load_layer_from_png(tmp_filename, x, y, feedback_cb)
-            os.remove(tmp_filename)
-
-            layer = self.layers[0]
-
-            self.set_layer_opacity(helpers.clamp(opac, 0.0, 1.0), layer)
-            self.set_layer_compositeop(compositeop, layer)
-            self.set_layer_visibility(visible, layer)
-            self.set_layer_locked(locked, layer)
-            if selected:
-                selected_layer = layer
-            logger.debug('%.3fs loading and converting layer png',
-                         time.time() - t1)
-            # strokemap
-            fname = a.get('mypaint_strokemap_v2', None)
-            if fname:
-                sio = StringIO(z.read(fname))
-                layer.load_strokemap_from_file(sio, x, y)
-                sio.close()
-
-        if len(self.layers) == 1:
-            # no assertion (allow empty documents)
-            logger.error('Could not load any layer, document is empty.')
-
-        if len(self.layers) > 1:
-            # remove the still present initial empty top layer
-            self.select_layer(len(self.layers)-1)
-            self.remove_layer()
-            # this leaves the topmost layer selected
+        # Resolution information if specified
+        # Before frame to benefit from its observer call
+        if image_xres and image_yres:
+            self._xres = image_xres
+            self._yres = image_yres
+        else:
+            self._xres = None
+            self._yres = None
 
         try:
             ani_data = z.read('animation.xsheet')
@@ -1043,30 +1136,144 @@ class Document():
         except KeyError:
             self.ani.load_xsheet(filename)
 
-        if selected_layer is not None:
-            for i, layer in zip(range(len(self.layers)), self.layers):
-                if layer is selected_layer:
-                    self.select_layer(i)
-                    break
-
         # Set the frame size to that saved in the image.
-        self.update_frame(x=0, y=0, width=image_w, height=image_h,
+        self.update_frame(x=0, y=0, width=image_width, height=image_height,
                           user_initiated=False)
 
         # Enable frame if the saved image size is something other than the
         # calculated bounding box. Goal: if the user saves an "infinite
         # canvas", it loads as an infinite canvas.
-        bbox_c = helpers.Rect(x=0, y=0, w=image_w, h=image_h)
+        bbox_c = helpers.Rect(x=0, y=0, w=image_width, h=image_height)
         bbox = self.get_bbox()
         frame_enab = not (bbox_c==bbox or bbox.empty() or bbox_c.empty())
         self.set_frame_enabled(frame_enab, user_initiated=False)
 
-        z.close()
-
-        # remove empty directories created by zipfile's extract()
-        for root, dirs, files in os.walk(tempdir, topdown=False):
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
-        os.rmdir(tempdir)
+        orazip.close()
 
         logger.info('%.3fs load_ora total', time.time() - t0)
+
+
+class _LayerStackMapping (object):
+    """Temporary compatibility hack"""
+
+    ## Construction
+
+    def __init__(self, doc):
+        super(_LayerStackMapping, self).__init__()
+        self._doc = doc
+        self._layer_paths = []
+        self._layer_idx = 0
+        doc.doc_observers.append(self._doc_structure_changed)
+
+    ## Updates
+
+    def _doc_structure_changed(self, doc):
+        current_path = self._doc.layer_stack.get_current_path()
+        self._layer_paths[:] = []
+        self._layer_idx = 0
+        i = 0
+        for path, layer in self._doc.layer_stack.deepenumerate():
+            self._layer_paths.append(path)
+            if path == current_path:
+                self._layer_idx = i
+            i += 1
+
+
+    ## Current-layer index
+
+
+    @property
+    def layer_idx(self):
+        warn("Use doc.layer_stack.current_path instead",
+             DeprecatedAPIWarning, stacklevel=3)
+        return self._layer_idx
+
+    @layer_idx.setter
+    def layer_idx(self, i):
+        warn("Use doc.layer_stack.current_path instead",
+             DeprecatedAPIWarning, stacklevel=3)
+        i = helpers.clamp(int(i), 0, max(0, len(self._layer_paths)-1))
+        path = self._layer_paths[i]
+        self._doc.layer_stack.current_path = path
+        self._layer_idx = i
+
+
+    ## Sequence emulation
+
+    def __iter__(self): # "for l in doc.layers: ..." #
+        warn("Use doc.layer_stack.deepiter() etc. instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        return self._doc.layer_stack.deepiter()
+
+    def __len__(self): # len(doc.layers) #
+        warn("Use doc.layer_stack.deepiter() etc. instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        return len(self._layer_paths)
+
+    def __getitem__(self, key): # doc.layers[int] #
+        warn("Use doc.layer_stack instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        path = self._getpath(key)
+        layer = self._doc.layer_stack.deepget(path)
+        assert layer is not None
+        return layer
+
+    def __setitem__(self, key, value):
+        raise NotImplementedError
+
+
+    def _getpath(self, key):
+        try: key = int(key)
+        except ValueError: raise TypeError, "keys must be ints"
+        if key < 0:
+            raise IndexError, "key out of range"
+        if key >= len(self._layer_paths):
+            raise IndexError, "key out of range"
+        return self._layer_paths[key]
+
+
+    def index(self, layer):
+        warn("Use doc.layer_stack.deepindex() instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        for i, ly in enumerate(self._doc.layer_stack.deepiter()):
+            if ly is layer:
+                return i
+        raise ValueError, "Layer not found"
+
+
+    def insert(self, index, layer):
+        warn("Use doc.layer_stack.deepinsert() instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        insert_path = self.get_insert_path(index)
+        self._doc.layer_stack.deepinsert(insert_path, layer)
+        self._doc_structure_changed(self._doc)
+
+    def remove(self, layer):
+        self._doc.layer_stack.deepremove(layer)
+        self._doc_structure_changed(self._doc)
+
+    def pop(self, i):
+        warn("Use doc.layer_stack instead",
+             DeprecatedAPIWarning, stacklevel=2)
+        path = self._getpath(i)
+        return self._doc.layer_stack.deeppop(path)
+
+
+    def get_insert_path(self, insert_index):
+        """Normalizes an insertion index to an insert path
+
+        :param insert_index: insert index, as for `list.insert()`
+        :type insert_index: int
+        :return: a root-stack path suitable for deepinsert()
+        :rtype: tuple
+        """
+        # Like list.insert(), indixes > the length always append items.
+        # Let's take that to mean inserting at the top of the root stack.
+        npaths = len(self._layer_paths)
+        if insert_index >= npaths:
+            return (len(self._doc.layer_stack),)
+        # Otherwise, do the lookup thing to find a path for deepinsert().
+        idx = insert_index
+        if idx < 0:
+            idx = max(idx, -npaths) # still negative, but now a valid index
+        return self._layer_paths[idx]

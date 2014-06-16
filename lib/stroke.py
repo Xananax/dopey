@@ -1,5 +1,5 @@
 # This file is part of MyPaint.
-# Copyright (C) 2007-2008 by Martin Renold <martinxyz@gmx.ch>
+# Copyright (C) 2007-2014 by Martin Renold <martinxyz@gmx.ch>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -9,32 +9,39 @@
 import brush
 import numpy
 
-class Stroke:
+class Stroke (object):
+    """Replayable record of a stroke's data
+
+    Stroke recording objects store all information required to replay a stroke
+    with the brush engine, event by event. This includes the RNG seed etc.
+
+    A "finished" stroke object is immutable, except right after creation (when
+    it has never been fully rendered).  To modify an existing stroke, the old
+    one must be deleted and a new Stroke instance must be used to replace it.
     """
-    This class stores all information required to replay a stroke with
-    the brush engine, event by event. This includes the RNG seed etc.
-    """
-    # A "finished" stroke object is immutable, except right after
-    # creation (when it has never been fully rendered).  To modify an
-    # existing stroke, the old one must be deleted and a new Stroke
-    # instance must be used to replace it.
-    serial_number = 0
+
+    _SERIAL_NUMBER = 0
+
     def __init__(self):
+        """Initialize"""
+        super(Stroke, self).__init__()
         self.finished = False
-        Stroke.serial_number += 1
-        self.serial_number = Stroke.serial_number
+        self._SERIAL_NUMBER += 1
+        self.serial_number = self._SERIAL_NUMBER
 
     def start_recording(self, brush):
         assert not self.finished
 
-        self.brush_settings = brush.brushinfo.save_to_string() # fast (brush caches this string)
+        bi = brush.brushinfo
+        self.brush_settings = bi.save_to_string()
+        self.brush_name = bi.get_string_property("parent_brush_name")
 
         states = brush.get_state()
         assert states.dtype == 'float32'
         self.brush_state = states.tostring()
 
         self.brush = brush
-        self.brush.new_stroke() # this just resets the stroke_* members of the brush
+        self.brush.new_stroke() # resets the stroke_* members of the brush
 
         self.tmp_event_list = []
 
@@ -43,7 +50,8 @@ class Stroke:
         self.tmp_event_list.append((dtime, x, y, pressure, xtilt,ytilt))
 
     def stop_recording(self):
-        assert not self.finished
+        if self.finished:
+            return
         # OPTIMIZE 
         # - for space: just gzip? use integer datatypes?
         # - for time: maybe already use array storage while recording?
@@ -61,6 +69,7 @@ class Stroke:
 
     def is_empty(self):
         return self.total_painting_time == 0
+
     empty = property(is_empty)
         
     def render(self, surface):
@@ -85,12 +94,15 @@ class Stroke:
             b.stroke_to(surface.backend, x, y, pressure, xtilt,ytilt, dtime)
         surface.end_atomic()
 
-    def copy_using_different_brush(self, brush):
+    def copy_using_different_brush(self, brushinfo):
         assert self.finished
-        s = Stroke()
-        s.__dict__.update(self.__dict__)
-        s.brush_settings = brush.save_to_string()
+        # Make a shallow clone of almost everything
+        clone = Stroke()
+        clone.__dict__.update(self.__dict__)
+        # Except for the brush-specific stuff
+        clone.brush_settings = brushinfo.save_to_string()
+        clone.brush_name = brushinfo.get_string_property("parent_brush_name")
         # note: we keep self.brush_state intact, even if the new brush
         # has different meanings for the states. This should cause
         # fewer glitches than resetting the initial state to zero.
-        return s
+        return clone

@@ -11,6 +11,10 @@ A list of contributors can be found in the about dialog.
 Building and installing on Linux
 ================================
 
+Update submodules
+
+    $ git submodule update --init
+
 Compile and run:
 
     $ scons
@@ -36,8 +40,8 @@ Install (for packagers):
         limiting.)
 
 
-Required: pygobject, gtk3, python, swig, numpy, pycairo(>=1.4), libpng,
-            lcms2, json-c
+Required: pygobject, gtk3, python(=2.7), swig, numpy, pycairo(>=1.4), libpng,
+            lcms2, json-c, librsvg
     (NOTE: pygobject must be built with --enable-cairo)
 
 

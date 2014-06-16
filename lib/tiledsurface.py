@@ -6,7 +6,9 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
-# This module implements an unbounded tiled surface for painting.
+"""This module implements an unbounded tiled surface for painting."""
+
+## Imports
 
 import numpy
 from numpy import *
@@ -14,22 +16,123 @@ import time
 import sys
 import os
 import contextlib
-import functools
 import logging
 logger = logging.getLogger(__name__)
+
+from gettext import gettext as _
 
 import mypaintlib
 import helpers
 import math
 import pixbufsurface
-from layer import DEFAULT_COMPOSITE_OP
+
+
+## Constants: tile sizes and mipmaps
 
 TILE_SIZE = N = mypaintlib.TILE_SIZE
 MAX_MIPMAP_LEVEL = mypaintlib.MAX_MIPMAP_LEVEL
 
-use_gegl = True if os.environ.get('MYPAINT_ENABLE_GEGL', 0) else False
+## Constants: blending/compositing mode lookup tables
 
 
+#: Name to layer combine mode lookup used when loading OpenRaster
+OPENRASTER_COMBINE_MODES = dict(
+    [(mypaintlib.combine_mode_get_info(mode)["name"], mode)
+      for mode in range(mypaintlib.NumCombineModes)])
+
+
+#: The default layer combine mode
+DEFAULT_COMBINE_MODE = mypaintlib.CombineNormal
+
+
+#: UI strings (label, tooltip) for color blending modes
+COMBINE_MODE_STRINGS = {
+    # Standard blend modes (using src-over compositing)
+    mypaintlib.CombineNormal: (
+        _("Normal"),
+        _("The top layer only, without blending colors.")),
+    mypaintlib.CombineMultiply: (
+        _("Multiply"),
+        _("Similar to loading two slides into a projector and "
+          "projecting the combined result.")),
+    mypaintlib.CombineScreen: (
+        _("Screen"),
+        _("Like shining two separate slide projectors onto a screen "
+          "simultaneously. This is the inverse of 'Multiply'.")),
+    mypaintlib.CombineOverlay: (
+        _("Overlay"),
+        _("Overlays the backdrop with the top layer, preserving the "
+          "backdrop's highlights and shadows. This is the inverse "
+          "of 'Hard Light'.")),
+    mypaintlib.CombineDarken: (
+        _("Darken"),
+        _("The top layer is used where it is darker than "
+          "the backdrop.")),
+    mypaintlib.CombineLighten: (
+        _("Lighten"),
+        _("The top layer is used where it is lighter than "
+          "the backdrop.")),
+    mypaintlib.CombineColorDodge: (
+        _("Dodge"),
+        _("Brightens the backdrop using the top layer. The effect is "
+          "similar to the photographic darkroom technique of the same "
+          "name which is used for improving contrast in shadows.")),
+    mypaintlib.CombineColorBurn: (
+        _("Burn"),
+        _("Darkens the backdrop using the top layer. The effect looks "
+          "similar to the photographic darkroom technique of the same "
+          "name which is used for reducing over-bright highlights.")),
+    mypaintlib.CombineHardLight: (
+        _("Hard Light"),
+        _("Similar to shining a harsh spotlight onto the backdrop.")),
+    mypaintlib.CombineSoftLight: (
+        _("Soft Light"),
+        _("Like shining a diffuse spotlight onto the backdrop.")),
+    mypaintlib.CombineDifference: (
+        _("Difference"),
+        _("Subtracts the darker color from the lighter of the two.")),
+    mypaintlib.CombineExclusion: (
+        _("Exclusion"),
+        _("Similar to the 'Difference' mode, but lower in contrast.")),
+    # Nonseparable blend modes (with src-over compositing)
+    mypaintlib.CombineHue: (
+        _("Hue"),
+        _("Combines the hue of the top layer with the saturation and "
+          "luminosity of the backdrop.")),
+    mypaintlib.CombineSaturation: (
+        _("Saturation"),
+        _("Applies the saturation of the top layer's colors to the "
+          "hue and luminosity of the backdrop.")),
+    mypaintlib.CombineColor: (
+        _("Color"),
+        _("Applies the hue and saturation of the top layer to the "
+          "luminosity of the backdrop.")),
+    mypaintlib.CombineLuminosity: (
+        _("Luminosity"),
+        _("Applies the luminosity of the top layer to the hue and "
+          "saturation of the backdrop.")),
+    # Compositing operators (using normal blend mode)
+    mypaintlib.CombineLighter: (
+        _("Plus"),
+        _("This layer and its backdrop are simply added together.")),
+    mypaintlib.CombineDestinationIn: (
+        _("Destination In"),
+        _("Uses the backdrop only where this layer covers it. "
+          "Everything else is ignored.")),
+    mypaintlib.CombineDestinationOut: (
+        _("Destination Out"),
+        _("Uses the backdrop only where this layer doesn't cover it. "
+          "Everything else is ignored.")),
+}
+
+#: The number of defined layer combine modes
+NUM_COMBINE_MODES = mypaintlib.NumCombineModes
+
+for mode in range(NUM_COMBINE_MODES):
+    assert mode in COMBINE_MODE_STRINGS
+
+
+## Tile class and marker tile constants
 
 class Tile (object):
     def __init__(self, copy_from=None):
@@ -47,30 +150,6 @@ class Tile (object):
         return Tile(copy_from=self)
 
 
-
-svg2mypaintlibmode = {
-    'svg:src-over': mypaintlib.BlendingModeNormal,
-    'svg:multiply': mypaintlib.BlendingModeMultiply,
-    'svg:screen': mypaintlib.BlendingModeScreen,
-    'svg:overlay': mypaintlib.BlendingModeOverlay,
-    'svg:darken': mypaintlib.BlendingModeDarken,
-    'svg:lighten': mypaintlib.BlendingModeLighten,
-    'svg:hard-light': mypaintlib.BlendingModeHardLight,
-    'svg:soft-light': mypaintlib.BlendingModeSoftLight,
-    'svg:color-burn': mypaintlib.BlendingModeColorBurn,
-    'svg:color-dodge': mypaintlib.BlendingModeColorDodge,
-    'svg:difference': mypaintlib.BlendingModeDifference,
-    'svg:exclusion': mypaintlib.BlendingModeExclusion,
-    'svg:hue': mypaintlib.BlendingModeHue,
-    'svg:saturation': mypaintlib.BlendingModeSaturation,
-    'svg:color': mypaintlib.BlendingModeColor,
-    'svg:luminosity': mypaintlib.BlendingModeLuminosity,
-    }
-
-svg2composite_func = {}
-for svg_id, mode_enum in svg2mypaintlibmode.iteritems():
-    svg2composite_func[svg_id] = functools.partial(mypaintlib.tile_composite, mode_enum)
-
 # tile for read-only operations on empty spots
 transparent_tile = Tile()
 transparent_tile.readonly = True
@@ -79,87 +158,36 @@ transparent_tile.readonly = True
 mipmap_dirty_tile = Tile()
 del mipmap_dirty_tile.rgba
 
+
+## Helper funcs
+
 def get_tiles_bbox(tiles):
     res = helpers.Rect()
     for tx, ty in tiles:
         res.expandToIncludeRect(helpers.Rect(N*tx, N*ty, N, N))
     return res
 
+
+## Class defs: surfaces
+
 class SurfaceSnapshot (object):
     pass
 
-if use_gegl:
-
-    class GeglSurface():
-
-        def __init__(self, mipmap_level=0, looped=False, looped_size=(0,0)):
-            self.observers = []
-            self._backend = mypaintlib.GeglBackedSurface(self)
-
-            # Forwarding API
-            self.begin_atomic = self._backend.begin_atomic
-            self.end_atomic = self._backend.end_atomic
-            self.get_color = self._backend.get_color
-            self.get_alpha = self._backend.get_alpha
-            self.draw_dab = self._backend.draw_dab
-#            self.set_symmetry_state = self._backend.set_symmetry_state
-            self.get_node = self._backend.get_node
-
-        @property
-        def backend(self):
-            return self._backend
-
-        def notify_observers(self, *args):
-            for f in self.observers:
-                f(*args)
-
-        def get_bbox(self):
-            rect = helpers.Rect(*self.get_bbox_c())
-            return rect
-
-        def clear(self):
-            pass
-
-        def save_as_png(self, path, *args, **kwargs):
-            return self.save_as_png_c(str(path))
-
-        def load_from_png(self, path, x, y, *args, **kwargs):
-            return self.load_from_png_c(str(path))
-
-        def save_snapshot(self):
-            sshot = SurfaceSnapshot()
-            sshot.tiledict = {}
-            return sshot
-
-        def load_snapshot(self, sshot):
-            pass
-
-        def is_empty(self):
-            return False
-
-        def remove_empty_tiles(self):
-            pass
-
-        def composite_tile(self, dst, dst_has_alpha, tx, ty, mipmap_level=0, opacity=1.0,
-                           mode=DEFAULT_COMPOSITE_OP):
-            pass
-
-        def load_from_numpy(self, arr, x, y):
-            return (0, 0, 0, 0)
-
-        def load_from_surface(self, other):
-            pass
-
-        def get_tiles(self):
-            return {}
-
-        def set_symmetry_state(self, enabled, center_axis):
-            pass
 
 # TODO:
 # - move the tile storage from MyPaintSurface to a separate class
 class MyPaintSurface (object):
-    # the C++ half of this class is in tiledsurface.hpp
+    """Tile-based surface
+
+    The C++ part of this class is in tiledsurface.hpp
+    """
+
+    #: Lookup table of combine modes to skip whan alpha==0, keyed by mode
+    _SKIP_COMPOSITE_IF_EMPTY = [
+        not mypaintlib.combine_mode_get_info(mode)["zero_alpha_has_effect"]
+        for mode in xrange(mypaintlib.NumCombineModes) ]
+
+
     def __init__(self, mipmap_level=0, mipmap_surfaces=None,
                  looped=False, looped_size=(0,0)):
         object.__init__(self)
@@ -176,25 +204,12 @@ class MyPaintSurface (object):
         self.looped_size = looped_size
 
         self.mipmap_level = mipmap_level
-        self.mipmaps = mipmap_surfaces
-
         if mipmap_level == 0:
-            mipmaps = [self]
-            for level in range(1, MAX_MIPMAP_LEVEL+1):
-                s = MyPaintSurface(mipmap_level=level, mipmap_surfaces=mipmaps)
-                mipmaps.append(s)
-            self.mipmaps = mipmaps
-
-            # for quick lookup
-            for level, s in enumerate(mipmaps):
-                try:
-                    s.parent = mipmaps[level-1]
-                except IndexError:
-                    s.parent = None
-                try:
-                    s.mipmap = mipmaps[level+1]
-                except IndexError:
-                    s.mipmap = None
+            assert mipmap_surfaces is None
+            self._mipmaps = self._create_mipmap_surfaces()
+        else:
+            assert mipmap_surfaces is not None
+            self._mipmaps = mipmap_surfaces
 
         # Forwarding API
         self.set_symmetry_state = self._backend.set_symmetry_state
@@ -205,10 +220,35 @@ class MyPaintSurface (object):
         self.draw_dab = self._backend.draw_dab
 
 
+    def _create_mipmap_surfaces(self):
+        """Internal: initializes an internal mipmap lookup table
+
+        Overridable to avoid unnecessary work when initializing the background
+        surface subclass.
+        """
+        assert self.mipmap_level == 0
+        mipmaps = [self]
+        for level in range(1, MAX_MIPMAP_LEVEL+1):
+            s = MyPaintSurface(mipmap_level=level, mipmap_surfaces=mipmaps)
+            mipmaps.append(s)
+
+        # for quick lookup
+        for level, s in enumerate(mipmaps):
+            try:
+                s.parent = mipmaps[level-1]
+            except IndexError:
+                s.parent = None
+            try:
+                s.mipmap = mipmaps[level+1]
+            except IndexError:
+                s.mipmap = None
+        return mipmaps
+
+
     def end_atomic(self):
-	bbox = self._backend.end_atomic()
-	if (bbox[2] > 0 and bbox[3] > 0):
-	    self.notify_observers(*bbox)
+        bbox = self._backend.end_atomic()
+        if (bbox[2] > 0 and bbox[3] > 0):
+            self.notify_observers(*bbox)
 
     @property
     def backend(self):
@@ -306,7 +346,9 @@ class MyPaintSurface (object):
 
     def _mark_mipmap_dirty(self, tx, ty):
         #assert self.mipmap_level == 0
-        for level, mipmap in enumerate(self.mipmaps):
+        if not self._mipmaps:
+            return
+        for level, mipmap in enumerate(self._mipmaps):
             if level == 0:
                 continue
             fac = 2**(level)
@@ -342,20 +384,26 @@ class MyPaintSurface (object):
                 else:
                     raise ValueError, 'Unsupported destination buffer type'
 
-    def composite_tile(self, dst, dst_has_alpha, tx, ty, mipmap_level=0, opacity=1.0,
-                       mode=DEFAULT_COMPOSITE_OP):
+    def composite_tile(self, dst, dst_has_alpha, tx, ty, mipmap_level=0,
+                       opacity=1.0, mode=DEFAULT_COMBINE_MODE):
         """Composite one tile of this surface over a NumPy array.
 
         Composite one tile of this surface over the array dst, modifying only dst.
         """
         if self.mipmap_level < mipmap_level:
-            return self.mipmap.composite_tile(dst, dst_has_alpha, tx, ty, mipmap_level, opacity, mode)
-        if not (tx,ty) in self.tiledict:
-            return
+            return self.mipmap.composite_tile(dst, dst_has_alpha, tx, ty,
+                                              mipmap_level, opacity, mode)
+
+        # Optimization: for some compositing modes, e.g. source-over, an empty
+        # source tile leaves the backdrop unchanged.
+        if self._SKIP_COMPOSITE_IF_EMPTY[mode]:
+            if (tx, ty) not in self.tiledict:
+                return
+            if opacity == 0:
+                return
 
         with self.tile_request(tx, ty, readonly=True) as src:
-            func = svg2composite_func[mode]
-            func(src, dst, dst_has_alpha, opacity)
+            mypaintlib.tile_combine(mode, src, dst, dst_has_alpha, opacity)
 
 
     ## Snapshotting
@@ -377,7 +425,7 @@ class MyPaintSurface (object):
     def _load_tiledict(self, d):
         """Efficiently loads a tiledict, and notifies the observers"""
         if d == self.tiledict:
-            # common case optimization, called from split_stroke() via stroke.redo()
+            # common case optimization, called via stroke.redo()
             # testcase: comparison above (if equal) takes 0.6ms, code below 30ms
             return
         old = set(self.tiledict.iteritems())
@@ -541,9 +589,8 @@ class MyPaintSurface (object):
         """
         return TiledSurfaceMove(self, x, y, sort=sort)
 
-
     def flood_fill(self, x, y, color, bbox, tolerance, dst_surface):
-        """Fills connected areas of this surface
+        """Fills connected areas of this surface into another
 
         :param x: Starting point X coordinate
         :param y: Starting point Y coordinate
@@ -553,106 +600,12 @@ class MyPaintSurface (object):
         :type bbox: lib.helpers.Rect or equivalent 4-tuple
         :param tolerance: how much filled pixels are permitted to vary
         :type tolerance: float [0.0, 1.0]
-        :param dst_surface: Target surface
-        :type dst_surface: MyPaintSurface
+        :param dst: Target surface
+        :type dst: lib.tiledsurface.MyPaintSurface
 
-        See also `lib.layer.Layer.flood_fill()`.
+        See also `lib.layer.Layer.flood_fill()` and `fill.flood_fill()`.
         """
-        # Colour to fill with
-        fill_r, fill_g, fill_b = color
-
-        # Limits
-        tolerance = helpers.clamp(tolerance, 0.0, 1.0)
-
-        # Maximum area to fill: tile and in-tile pixel extents
-        bbx, bby, bbw, bbh = bbox
-        if bbh <= 0 or bbw <= 0:
-            return
-        bbbrx = bbx + bbw - 1
-        bbbry = bby + bbh - 1
-        min_tx = int(bbx // N)
-        min_ty = int(bby // N)
-        max_tx = int(bbbrx // N)
-        max_ty = int(bbbry // N)
-        min_px = int(bbx % N)
-        min_py = int(bby % N)
-        max_px = int(bbbrx % N)
-        max_py = int(bbbry % N)
-
-        # Tile and pixel addressing for the seed point
-        tx, ty = int(x//N), int(y//N)
-        px, py = int(x%N), int(y%N)
-
-        # Sample the pixel colour there to obtain the target colour
-        with self.tile_request(tx, ty, readonly=True) as start:
-            targ_r, targ_g, targ_b, targ_a = [int(c) for c in start[py][px]]
-        if targ_a == 0:
-            targ_r = 0
-            targ_g = 0
-            targ_b = 0
-            targ_a = 0
-
-        # Flood-fill loop
-        filled = {}
-        tileq = [ ((tx, ty), [(px, py)]) ]
-        while len(tileq) > 0:
-            (tx, ty), seeds = tileq.pop(0)
-            # Bbox-derived limits
-            if tx > max_tx or ty > max_ty:
-                continue
-            if tx < min_tx or ty < min_ty:
-                continue
-            # Pixel limits within this tile...
-            min_x = 0
-            min_y = 0
-            max_x = N-1
-            max_y = N-1
-            # ... vary at the edges
-            if tx == min_tx:
-                min_x = min_px
-            if ty == min_ty:
-                min_y = min_py
-            if tx == max_tx:
-                max_x = max_px
-            if ty == max_ty:
-                max_y = max_py
-            # Flood-fill one tile
-            one = 1<<15
-            col = (int(fill_r*one), int(fill_g*one), int(fill_b*one), one)
-            with self.tile_request(tx, ty, readonly=True) as src:
-                dst = filled.get((tx, ty), None)
-                if dst is None:
-                    dst = zeros((N, N, 4), 'uint16')
-                    filled[(tx, ty)] = dst
-                overflows = mypaintlib.tile_flood_fill(src, dst, seeds,
-                               targ_r, targ_g, targ_b, targ_a,
-                               fill_r, fill_g, fill_b,
-                               min_x, min_y, max_x, max_y,
-                               tolerance)
-                seeds_n, seeds_e, seeds_s, seeds_w = overflows
-            # Enqueue overflows in each cardinal direction
-            if seeds_n and ty > min_ty:
-                tpos = (tx, ty-1)
-                tileq.append((tpos, seeds_n))
-            if seeds_w and tx > min_tx:
-                tpos = (tx-1, ty)
-                tileq.append((tpos, seeds_w))
-            if seeds_s and ty < max_ty:
-                tpos = (tx, ty+1)
-                tileq.append((tpos, seeds_s))
-            if seeds_e and tx < max_tx:
-                tpos = (tx+1, ty)
-                tileq.append((tpos, seeds_e))
-
-        # Composite filled tiles into the destination surface
-        comp = functools.partial(mypaintlib.tile_composite,
-                                 mypaintlib.BlendingModeNormal)
-        for (tx, ty), src in filled.iteritems():
-            with dst_surface.tile_request(tx, ty, readonly=False) as dst:
-                comp(src, dst, True, 1.0)
-            dst_surface._mark_mipmap_dirty(tx, ty)
-        bbox = get_tiles_bbox(filled)
-        dst_surface.notify_observers(*bbox)
+        flood_fill(self, x, y, color, bbox, tolerance, dst_surface)
 
 
 class TiledSurfaceMove (object):
@@ -725,13 +678,11 @@ class TiledSurfaceMove (object):
 
 
     def cleanup(self):
-        """Cleans up after processing all tile moves in one update cycle
+        """Cleans up after processing the move.
 
-        This should be called after `process()` indicates that all tiles have
-        been sliced and moved. It should always happen at the end of a move,
-        but for an iteractive move, this can happen in the middle of
-        proceedings too if the user pauses their drag for long enough. The move
-        can still be updated and processed after this method has been called.
+        This must be called after the move has been processed fully, and
+        should only be called after `process()` indicates that all tiles have
+        been sliced and moved.
         """
         # Process any remaining work. Caller should have done this already.
         if self.chunks_i < len(self.chunks) or len(self.blank_queue) > 0:
@@ -844,7 +795,7 @@ def calc_translation_slices(dc):
 
 
 # Set which surface backend to use
-Surface = GeglSurface if use_gegl else MyPaintSurface
+Surface = MyPaintSurface
 
 
 def new_surface():
@@ -894,6 +845,11 @@ class Background (Surface):
             self.mipmap_level = mipmap_level
 
 
+    def _create_mipmap_surfaces(self):
+        """Internal override: Background uses a different mipmap impl."""
+        return None
+
+
     def load_from_numpy(self, arr, x, y):
         """Loads tile data from a numpy array
 
@@ -914,3 +870,158 @@ class Background (Surface):
             return (x, y, w, h)
         else:
             return super(Background, self).load_from_numpy(arr, x, y)
+
+
+def flood_fill(src, x, y, color, bbox, tolerance, dst):
+    """Fills connected areas of one surface into another
+
+    :param src: Source surface-like object
+    :type src: Anything supporting readonly tile_request()
+    :param x: Starting point X coordinate
+    :param y: Starting point Y coordinate
+    :param color: an RGB color
+    :type color: tuple
+    :param bbox: Bounding box: limits the fill
+    :type bbox: lib.helpers.Rect or equivalent 4-tuple
+    :param tolerance: how much filled pixels are permitted to vary
+    :type tolerance: float [0.0, 1.0]
+    :param dst: Target surface
+    :type dst: lib.tiledsurface.MyPaintSurface
+
+    See also `lib.layer.Layer.flood_fill()`.
+    """
+    # Colour to fill with
+    fill_r, fill_g, fill_b = color
+
+    # Limits
+    tolerance = helpers.clamp(tolerance, 0.0, 1.0)
+
+    # Maximum area to fill: tile and in-tile pixel extents
+    bbx, bby, bbw, bbh = bbox
+    if bbh <= 0 or bbw <= 0:
+        return
+    bbbrx = bbx + bbw - 1
+    bbbry = bby + bbh - 1
+    min_tx = int(bbx // N)
+    min_ty = int(bby // N)
+    max_tx = int(bbbrx // N)
+    max_ty = int(bbbry // N)
+    min_px = int(bbx % N)
+    min_py = int(bby % N)
+    max_px = int(bbbrx % N)
+    max_py = int(bbbry % N)
+
+    # Tile and pixel addressing for the seed point
+    tx, ty = int(x//N), int(y//N)
+    px, py = int(x%N), int(y%N)
+
+    # Sample the pixel colour there to obtain the target colour
+    with src.tile_request(tx, ty, readonly=True) as start:
+        targ_r, targ_g, targ_b, targ_a = [int(c) for c in start[py][px]]
+    if targ_a == 0:
+        targ_r = 0
+        targ_g = 0
+        targ_b = 0
+        targ_a = 0
+
+    # Flood-fill loop
+    filled = {}
+    tileq = [ ((tx, ty), [(px, py)]) ]
+    while len(tileq) > 0:
+        (tx, ty), seeds = tileq.pop(0)
+        # Bbox-derived limits
+        if tx > max_tx or ty > max_ty:
+            continue
+        if tx < min_tx or ty < min_ty:
+            continue
+        # Pixel limits within this tile...
+        min_x = 0
+        min_y = 0
+        max_x = N-1
+        max_y = N-1
+        # ... vary at the edges
+        if tx == min_tx:
+            min_x = min_px
+        if ty == min_ty:
+            min_y = min_py
+        if tx == max_tx:
+            max_x = max_px
+        if ty == max_ty:
+            max_y = max_py
+        # Flood-fill one tile
+        one = 1<<15
+        col = (int(fill_r*one), int(fill_g*one), int(fill_b*one), one)
+        with src.tile_request(tx, ty, readonly=True) as src_tile:
+            dst_tile = filled.get((tx, ty), None)
+            if dst_tile is None:
+                dst_tile = zeros((N, N, 4), 'uint16')
+                filled[(tx, ty)] = dst_tile
+            overflows = mypaintlib.tile_flood_fill(
+                            src_tile, dst_tile, seeds,
+                            targ_r, targ_g, targ_b, targ_a,
+                            fill_r, fill_g, fill_b,
+                            min_x, min_y, max_x, max_y,
+                            tolerance)
+            seeds_n, seeds_e, seeds_s, seeds_w = overflows
+        # Enqueue overflows in each cardinal direction
+        if seeds_n and ty > min_ty:
+            tpos = (tx, ty-1)
+            tileq.append((tpos, seeds_n))
+        if seeds_w and tx > min_tx:
+            tpos = (tx-1, ty)
+            tileq.append((tpos, seeds_w))
+        if seeds_s and ty < max_ty:
+            tpos = (tx, ty+1)
+            tileq.append((tpos, seeds_s))
+        if seeds_e and tx < max_tx:
+            tpos = (tx+1, ty)
+            tileq.append((tpos, seeds_e))
+
+    # Composite filled tiles into the destination surface
+    mode = mypaintlib.CombineNormal
+    for (tx, ty), src_tile in filled.iteritems():
+        with dst.tile_request(tx, ty, readonly=False) as dst_tile:
+            mypaintlib.tile_combine(mode, src_tile, dst_tile, True, 1.0)
+        dst._mark_mipmap_dirty(tx, ty)
+    bbox = get_tiles_bbox(filled)
+    dst.notify_observers(*bbox)
+
+
+class TileRequestWrapper (object):
+    """Adapts a compositable object into one supporting tile_request()
+
+    The wrapping is very minimal. Tiles are composited into empty buffers on
+    demand and cached. The tile request interface is therefore read only, and
+    these wrappers should be used only as temporary objects.
+    """
+
+    def __init__(self, obj, **kwargs):
+        """Adapt a compositable object to support `tile_request()`
+
+        :param obj: Any object with a `composite_tile()` method
+        :param **kwargs: Keyword args to pass to `composite_tile()`.
+        """
+        super(TileRequestWrapper, self).__init__()
+        self._obj = obj
+        self._cache = {}
+        self._opts = kwargs
+
+    @contextlib.contextmanager
+    def tile_request(self, tx, ty, readonly):
+        """Context manager that fetches a tile as a NumPy array
+
+        To be used with the 'with' statement.
+        """
+        if not readonly:
+            raise ValueError, "Only readonly tile requests are supported"
+        tile = self._cache.get((tx, ty), None)
+        if tile is None:
+            tile = zeros((N, N, 4), 'uint16')
+            self._cache[(tx, ty)] = tile
+            self._obj.composite_tile(tile, True, tx, ty, **self._opts)
+        yield tile
+
+    def __getattr__(self, attr):
+        """Pass through calls to other methods"""
+        return getattr(self._obj, attr)
+
