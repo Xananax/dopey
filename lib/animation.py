@@ -9,7 +9,7 @@
 import os
 import glob
 from gettext import gettext as _
-from layer import Layer
+from layer import PaintingLayer
 import json
 import tempfile
 from subprocess import call
@@ -19,6 +19,9 @@ import pixbufsurface
 import anicommand
 from timeline import TimeLine
 from xdna import XDNA
+from mypaintlib import combine_mode_get_info
+from tiledsurface import OPENRASTER_COMBINE_MODES
+from tiledsurface import DEFAULT_COMBINE_MODE
 
 
 class Animation(object):
@@ -125,21 +128,23 @@ class Animation(object):
 
         self.timeline.cleanup()
         for l, layer in enumerate(self.timeline):
+            compop = combine_mode_get_info(layer.composite).get("name", '')
             data['xsheet']['raster_frame_lists'].append({
                 'description': layer.description,
                 'visible': layer.visible,
                 'opacity': layer.opacity,
                 'locked': layer.locked,
-                'composite': layer.composite,
+                'composite': compop,
+                'frames': {}
             })
             for nf in layer:
                 f = layer[nf]
                 if f.cel is not None:
-                    layer_idx = self.doc.layers.index(f.cel)
+                    layer_path = self.doc.layer_stack.deepindex(f.cel)
                 else:
-                    layer_idx = None
-                data['xsheet']['raster_frame_lists'][l][nf] = {
-                    'idx': layer_idx,
+                    layer_path = None
+                data['xsheet']['raster_frame_lists'][l]['frames'][nf] = {
+                    'path': layer_path,
                     'is_key': f.is_key,
                     'description': f.description
                 }
@@ -178,29 +183,54 @@ class Animation(object):
                 # load with current format (dictionaries)
                 for j in range(len(raster_frames)):
                     self.timeline.append_layer()
-                    self.timeline[j].description = raster_frames[j]['description']
+                    self.timeline[j].description = str(raster_frames[j]['description'])
                     self.timeline[j].visible = raster_frames[j]['visible']
                     self.timeline[j].opacity = raster_frames[j]['opacity']
                     self.timeline[j].locked = raster_frames[j]['locked']
-                    self.timeline[j].composite = raster_frames[j]['composite']
-                    for ui in raster_frames[j]:
-                        try:
-                            i = int(ui)
-                        except ValueError:
-                            continue
-                        d = raster_frames[j][ui]
-                        f = self.timeline[j][i]
-                        if d['idx'] is not None:
-                            if d['idx'] < len(self.doc.layers):
-                                cel = self.doc.layers[d['idx']]
+                    self.timeline[j].composite = OPENRASTER_COMBINE_MODES.get(
+                        str(raster_frames[j]['composite']), DEFAULT_COMBINE_MODE)
+                    if 'frames' in raster_frames[j]:
+                        for i in raster_frames[j]['frames']:
+                            d = raster_frames[j]['frames'][i]
+                            f = self.timeline[j][int(i)]
+                            if d['path'] is not None:
+                                cel = self.doc.layer_stack.deepget(d['path'])
+                                if cel is None:
+                                    cel = PaintingLayer()
+                                    self.doc.layer_stack.append(cel)
                             else:
-                                cel = Layer()
-                                self.doc.layers.append(cel)
-                        else:
-                            cel = None
-                        f.is_key = d['is_key']
-                        f.description = d['description']
-                        f.cel = cel
+                                cel = None
+                            f.is_key = d['is_key']
+                            f.description = d['description']
+                            f.cel = cel
+                    else:		#(temporary) legacy support
+                        for ui in raster_frames[j]:
+                            try:
+                                i = int(ui)
+                            except ValueError:
+                                continue
+                            d = raster_frames[j][ui]
+                            f = self.timeline[j][i]
+                            if 'path' in d:
+                                if d['path'] is not None:
+                                    cel = self.doc.layer_stack.deepget(d['path'])
+                                    if cel is None:
+                                        cel = PaintingLayer()
+                                        self.doc.layer_stack.append(cel)
+                                else:
+                                    cel = None
+                            else:
+                                if d['idx'] is not None:
+                                    cel = self.doc.layer_stack.deepget(
+                                          (len(self.doc.layer_stack)-int(d['idx'])-1,))
+                                    if cel is None:
+                                        cel = PaintingLayer()
+                                        self.doc.layer_stack.append(cel)
+                                else:
+                                    cel = None
+                            f.is_key = d['is_key']
+                            f.description = str(d['description'])
+                            f.cel = cel
                 
             else:
                 # load with revision 1 format (lists)
@@ -209,11 +239,12 @@ class Animation(object):
                     self.timeline.append_layer()
                     for i, d in enumerate(raster_frames[j]):
                         if d['idx'] is not None:
-                            if d['idx'] < len(self.doc.layers):
-                                cel = self.doc.layers[d['idx']]
+                            if d['idx'] < len(self.doc.layer_stack):
+                                cel = self.doc.layer_stack.deepget(
+                                       (len(self.doc.layer_stack)-int(d['idx'])-1,))
                             else:
-                                cel = Layer()
-                                self.doc.layers.append(cel)
+                                cel = PaintingLayer()
+                                self.doc.layer_stack.append(cel)
                         else:
                             cel = None
                         self.timeline[j][i].is_key = d['is_key']
@@ -231,11 +262,12 @@ class Animation(object):
             for i, d in enumerate(data):
                 is_key, description, layer_idx = d
                 if layer_idx is not None:
-                    if layer_idx < len(self.doc.layers):
-                        cel = self.doc.layers[layer_idx]
+                    if layer_idx < len(self.doc.layer_stack):
+                        cel = self.doc.layer_stack.deepget(
+                                 (len(self.doc.layer_stack)-int(d['idx'])-1,))
                     else:
-                        cel = Layer()
-                        self.doc.layers.append(cel)
+                        cel = PaintingLayer()
+                        self.doc.layer_stack.append(cel)
                 else:
                     cel = None
                 self.timeline[0][i].is_key = is_key
@@ -276,7 +308,7 @@ class Animation(object):
         doc_bbox = self.doc.get_effective_bbox()
 
         for i in range(self.timeline.get_first(), self.timeline.get_last()+1):
-            frame = Layer()
+            frame = PaintingLayer()
             for j in range(len(self.timeline)):
                 cel = self.timeline[j].cel_at(i)
                 visible, opacity = cel.visible, cel.opacity
@@ -364,15 +396,9 @@ class Animation(object):
               "-y", "-i",
               jpgs, out_filename])
 
-    def _notify_canvas_observers(self, affected_layer):
-        bbox = affected_layer._surface.get_bbox()
-        for f in self.doc.canvas_observers:
-            f(*bbox)
-
     def hide_all_frames(self):
         for cel in self.timeline.get_all_cels():
             cel.visible = False
-            self._notify_canvas_observers(cel)
 
     def change_visible_frame(self, prev_idx, cur_idx):
         prev_cels = self.timeline.cels_at(prev_idx)
@@ -383,14 +409,12 @@ class Animation(object):
                 continue
             if cel != None:
                 cel.visible = False
-                self._notify_canvas_observers(cel)
         for cel in cur_cels:
             if cel in prev_cels:
                 continue
             if cel != None:
                 cel.opacity = 1
                 cel.visible = True
-                self._notify_canvas_observers(cel)
 
     def update_opacities(self):
         opacities, visible = self.timeline.get_opacities()
@@ -399,13 +423,11 @@ class Animation(object):
             if cel is None:
                 continue
             cel.opacity = opa
-            self._notify_canvas_observers(cel)
 
         for cel, vis in visible.items():
             if cel is None:
                 continue
             cel.visible = vis
-            self._notify_canvas_observers(cel)
 
     def generate_layername(self, idx, l_idx, description):
         letter = ""
@@ -476,26 +498,11 @@ class Animation(object):
         frame = self.timeline[lidx][idx]
         self.doc.do(anicommand.ToggleSkipVisible(self.doc, frame))
 
-#@TODO: frame movements done through command stack?
     def previous_frame(self, with_cel=False):
-        new = self.timeline.goto_previous(with_cel)
-        cel = self.timeline.layer.cel_at(self.timeline.idx)
-        if cel is not None:
-            layer_idx = self.doc.layers.index(cel)
-            self.doc.layer_idx = layer_idx
-        self.update_opacities()
-        if new: self.cleared = True
-        self.doc.call_doc_observers()
+        self.select(self.timeline.idx - 1)
 
     def next_frame(self, with_cel=False):
-        new = self.timeline.goto_next(with_cel)
-        cel = self.timeline.layer.cel_at(self.timeline.idx)
-        if cel is not None:
-            layer_idx = self.doc.layers.index(cel)
-            self.doc.layer_idx = layer_idx
-        self.update_opacities()
-        if new: self.cleared = True
-        self.doc.call_doc_observers()
+        self.select(self.timeline.idx + 1)
 
     def previous_keyframe(self):
         new = self.timeline.goto_previous_key()
@@ -535,17 +542,21 @@ class Animation(object):
 
     def move_frame(self, frame, amount):	#@TODO: add to undo stack
         self.timeline.layer.insert(frame+amount,self.timeline.layer.pop(frame))
+        self.sort_layers()
         self.doc.call_doc_observers()
 
     def move_layer(self, layer, amount):	#@TODO: add to undo stack
         self.timeline.insert_layer(layer+amount,self.timeline.pop(layer))
+        self.sort_layers()
         self.doc.call_doc_observers()
 
     def select(self, idx):
-        self.doc.do(anicommand.SelectFrame(self.doc, idx))
+        if self.timeline.idx != idx:
+            self.doc.do(anicommand.SelectFrame(self.doc, idx))
 
     def select_layer(self, idx):
-        self.doc.do(anicommand.SelectAnimationLayer(self.doc, idx))
+        if self.timeline.layer_idx != idx:
+            self.doc.do(anicommand.SelectAnimationLayer(self.doc, idx))
 
     def previous_layer(self):
         if self.timeline.has_previous_layer():
@@ -561,37 +572,41 @@ class Animation(object):
     def remove_layer(self, idx=None):
         self.doc.do(anicommand.RemoveLayer(self.doc, idx))
 
-    def set_layer_opacity(self, opac):
+    def set_layer_opacity(self, opac):		#@TODO: add to command stack
         self.timeline.layer.opacity = opac
         self.update_opacities()
 
-    def set_layer_composite(self, comp):
+    def set_layer_composite(self, comp):	#@TODO: add to command stack
         self.timeline.layer.composite = comp
         for frame in self.timeline.layer:
             f = self.timeline.layer[frame]
             if f.cel:
                 f.cel.compositeop = comp
-                self._notify_canvas_observers(f.cel)
         self.doc.call_doc_observers()
 
     def sort_layers(self):
-        new_order = self.timeline.get_order(self.doc.layers)
-        if new_order == self.doc.layers: return
-        selection = self.doc.layers[self.doc.layer_idx]
+        #@TODO: temporary implimentation using restack command (murders command stack)
+        import command
+        layers = self.doc.layer_stack
+        new_order = self.timeline.get_order(layers)
+        selection = self.doc.layer_stack.current
         if selection not in new_order: return
-        self.doc.layers = new_order
-        self.doc.layer_idx = self.doc.layers.index(selection)
+        rename = False
+        for nl, l in enumerate(new_order):
+            src_path = layers.deepindex(l)
+            tar_path = (nl,)
+            if src_path != tar_path:
+                rename = True
+                self.doc.do(command.RestackLayer(self.doc, src_path, tar_path))
+        layers.set_current_path(layers.canonpath(path=layers.deepindex(selection)))
+        if rename: self.rename_layers()
+
+    def rename_layers(self):
         for l, layer in enumerate(self.timeline):
             for f in layer:
                 if layer[f].has_cel():
-                    layer[f].cel.compositeop = layer.composite
                     new_name = self.generate_layername(f, l, layer[f].description)
                     layer[f].cel.name = new_name
-        cel = self.timeline.layer.cel_at(self.timeline.idx)
-        if cel is not None:
-            # Select the corresponding layer:
-            self.doc.layer_idx = self.doc.layers.index(cel)
-        self.update_opacities()
 
 
     def change_opacityfactor(self, opacityfactor):

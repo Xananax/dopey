@@ -417,6 +417,7 @@ class Document (object):
         self._xres = None
         self._yres = None
         self.canvas_area_modified(*prev_area)
+        self.ani.clear_xsheet()
         self.call_frame_observers()
 
     def brushsettings_changed_cb(self, settings, lightweight_settings=set([
@@ -1131,7 +1132,7 @@ class Document (object):
             self._yres = None
 
         try:
-            ani_data = z.read('animation.xsheet')
+            ani_data = orazip.read('animation.xsheet')
             self.ani.str_to_xsheet(ani_data)
         except KeyError:
             self.ani.load_xsheet(filename)

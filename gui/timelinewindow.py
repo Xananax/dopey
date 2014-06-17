@@ -11,12 +11,18 @@ import cairo
 import textwrap
 
 import anidialogs
-from layerswindow import stock_button
 from gettext import gettext as _
 
+from lib.tiledsurface import COMBINE_MODE_STRINGS, NUM_COMBINE_MODES
 from lib.timeline import DEFAULT_ACTIVE_CELS
-        
-        
+  
+def stock_button(stock_id):
+    b = Gtk.Button()
+    img = Gtk.Image()
+    img.set_from_stock(stock_id, Gtk.ICON_SIZE_MENU)
+    b.add(img)
+    return b
+
 class LayerWidget(Gtk.DrawingArea):
     __gtype_name__ = 'LayerWidget'
 
@@ -519,8 +525,8 @@ class TimelineWidget(Gtk.DrawingArea):
             else:
                 if layer < len(self.timeline.data) and frame in self.timeline.data[layer]:
                     self.move_frame = (layer, frame, False)
-                self.timeline.emit('change_current_frame', frame)
                 self.timeline.emit('change_selected_layer', layer)
+                self.timeline.emit('change_current_frame', frame)
         elif event.button == Gdk.BUTTON_MIDDLE:
             self.drag_scroll = [event.x, event.y]
         return True
@@ -647,7 +653,6 @@ class TimelineTool(Gtk.VBox):
 
 
         # layer controls:
-        from layerswindow import make_composite_op_model
         from widgets import SPACING_CRAMPED
         self.tooltip_format = _("<b>{blendingmode_name}</b>\n{blendingmode_description}")
 
@@ -661,12 +666,20 @@ class TimelineTool(Gtk.VBox):
           _("Blending mode: how the current layer combines with the "
             "layers underneath it."))
         layer_mode_lbl.set_alignment(0, 0.5)
-        self.layer_mode_model = make_composite_op_model()
-        self.layer_mode_combo = Gtk.ComboBox()
-        self.layer_mode_combo.set_model(self.layer_mode_model)
-        cell1 = Gtk.CellRendererText()
-        self.layer_mode_combo.pack_start(cell1)
-        self.layer_mode_combo.add_attribute(cell1, "text", 1)
+
+        store = Gtk.ListStore(str, str)
+        for mode in range(NUM_COMBINE_MODES):
+            label, desc = COMBINE_MODE_STRINGS.get(mode)
+            store.append([str(mode), label])
+        combo = Gtk.ComboBox()
+        combo.set_model(store)
+        combo.set_hexpand(True)
+        cell = Gtk.CellRendererText()
+        combo.pack_start(cell)
+        combo.add_attribute(cell, "text", 1)
+        combo.set_id_column(0)
+        self.layer_mode_combo = combo
+
         layer_ctrls_table.attach(layer_mode_lbl, 0, 1, row, row+1, Gtk.FILL)
         layer_ctrls_table.attach(self.layer_mode_combo, 1, 2, row, row+1, Gtk.FILL|Gtk.EXPAND)
         row += 1
@@ -739,18 +752,16 @@ class TimelineTool(Gtk.VBox):
         # Update the common widgets
         self.opacity_scale.set_value(current_layer.opacity*100)
         self.update_opacity_tooltip()
-        mode = current_layer.composite
-        def find_iter(model, path, iter, data):
-            md = model.get_value(iter, 0)
-            md_name = model.get_value(iter, 1)
-            md_desc = model.get_value(iter, 2)
-            if md == mode:
-                self.layer_mode_combo.set_active_iter(iter)
-                tooltip = self.tooltip_format.format(
-                    blendingmode_name = escape(md_name),
-                    blendingmode_description = escape(md_desc))
-                self.layer_mode_combo.set_tooltip_markup(tooltip)
-        self.layer_mode_model.foreach(find_iter, None)
+
+        combo = self.layer_mode_combo
+        already_correct = (combo.get_active_id() == str(current_layer.composite))
+        if not already_correct:
+            combo.set_active_id(str(current_layer.composite))
+            label, desc = COMBINE_MODE_STRINGS.get(current_layer.composite)
+            tooltip = self.tooltip_format.format(
+                blendingmode_name = escape(label),
+                blendingmode_description = escape(desc))
+            combo.set_tooltip_markup(tooltip)
 
         self._update_buttons_sensitive()
         if self.ani.cleared == True:
@@ -819,7 +830,6 @@ class TimelineTool(Gtk.VBox):
         self.emit('update')
         
     def do_change_current_frame(self, n):
-        #self.current = max(n, 0)
         self.ani.select(n)
         self.emit('update')
         
@@ -927,11 +937,11 @@ class TimelineTool(Gtk.VBox):
 
     def on_layer_mode_changed(self, *ignored):
         doc = self.app.doc.model
-        i = self.layer_mode_combo.get_active_iter()
-        mode_name, display_name, desc = self.layer_mode_model.get(i, 0, 1, 2)
-        doc.ani.set_layer_composite(mode_name)
+        mode = int(self.layer_mode_combo.get_active_id())
+        label, desc = COMBINE_MODE_STRINGS.get(mode)
+        doc.ani.set_layer_composite(mode)
         tooltip = self.tooltip_format.format(
-            blendingmode_name = escape(display_name),
+            blendingmode_name = escape(label),
             blendingmode_description = escape(desc))
         self.layer_mode_combo.set_tooltip_markup(tooltip)
 

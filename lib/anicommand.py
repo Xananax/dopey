@@ -6,26 +6,27 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 
-from command import Action, SelectLayer
+from command import Command, SelectLayer
 import layer, timeline
 from gettext import gettext as _
 
-class SelectFrame(Action):
+class SelectFrame(Command):
     display_name = _("Select frame")
     automatic_undo = True
     def __init__(self, doc, idx):
         self.doc = doc
         self.timeline = doc.ani.timeline
         self.idx = idx
-        self.prev_layer_idx = None
+        self.prev_layer_path = None
 
     def redo(self):
         cel = self.timeline.layer.cel_at(self.idx)
         if cel is not None:
             # Select the corresponding layer:
-            layer_idx = self.doc.layers.index(cel)
-            self.prev_layer_idx = self.doc.layer_idx
-            self.doc.layer_idx = layer_idx
+            layers = self.doc.layer_stack
+            layer_path = layers.deepindex(cel)
+            self.prev_layer_path = layers.get_current_path()
+            layers.set_current_path(layer_path)
         
         self.prev_frame_idx = self.timeline.idx
         self.timeline.select(self.idx)
@@ -33,39 +34,44 @@ class SelectFrame(Action):
         self._notify_document_observers()
     
     def undo(self):
-        if self.prev_layer_idx is not None:
-            self.doc.layer_idx = self.prev_layer_idx
+        if self.prev_layer_path is not None:
+            layers = self.doc.layer_stack
+            layers.set_current_path(self.prev_layer_path)
         self.timeline.select(self.prev_frame_idx)
         self.doc.ani.update_opacities()
         self._notify_document_observers()
 
-class SelectAnimationLayer(Action):
+class SelectAnimationLayer(Command):
     display_name = _("Select layer")
     automatic_undo = True
     def __init__(self, doc, idx):
         self.doc = doc
         self.timeline = doc.ani.timeline
         self.idx = idx
-        self.prev_layer_idx = None
+        self.prev_layer_path = None
 
     def redo(self):
         self.prev_idx = self.timeline.idx
         self.timeline.select_layer(self.idx)
 
-        cel = self.timeline.layer.cel_at(self.idx)
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        layers = self.doc.layer_stack
         if cel is not None:
             # Select the corresponding layer:
-            layer_idx = self.doc.layers.index(cel)
-            self.prev_layer_idx = self.doc.layer_idx
-            self.doc.layer_idx = layer_idx
+            layer_path = layers.deepindex(cel)
+            self.prev_layer_path = layers.get_current_path()
+            layers.set_current_path(layer_path)
+        else:
+            layers.set_current_path((0,))
 
         self.doc.ani.cleared = True
         self.doc.ani.update_opacities()
         self._notify_document_observers()
     
     def undo(self):
-        if self.prev_layer_idx is not None:
-            self.doc.layer_idx = self.prev_layer_idx
+        if self.prev_layer_path is not None:
+            layers = self.doc.layer_stack
+            layers.set_current_path(self.prev_layer_path)
         self.timeline.select_layer(self.prev_idx)
 
         self.doc.ani.cleared = True
@@ -73,7 +79,7 @@ class SelectAnimationLayer(Action):
         self._notify_document_observers()
 
 
-class ToggleKey(Action):
+class ToggleKey(Command):
     display_name = _("Toggle key")
     def __init__(self, doc, frame):
         self.doc = doc
@@ -91,7 +97,7 @@ class ToggleKey(Action):
         self._notify_document_observers()
 
 
-class ToggleSkipVisible(Action):
+class ToggleSkipVisible(Command):
     display_name = _("Toggle skip visible")
     automatic_undo = True
     def __init__(self, doc, frame):
@@ -110,7 +116,7 @@ class ToggleSkipVisible(Action):
         self._notify_document_observers()
 
 
-class ChangeDescription(Action):
+class ChangeDescription(Command):
     display_name = _("Change description")
     def __init__(self, doc, frame, l_idx, idx, new_description):
         self.doc = doc
@@ -136,7 +142,7 @@ class ChangeDescription(Action):
             self.frame.cel.name = self.old_layername
 
 
-class AddFrame(Action):
+class AddFrame(Command):
     display_name = _("Add frame")
     def __init__(self, doc, l_idx, idx, auto=False):
         self.automatic_undo = auto
@@ -148,51 +154,76 @@ class AddFrame(Action):
 
         # Create new layer:
         layername = self.doc.ani.generate_layername(self.idx, self.lidx, self.frame.description)
-        self.layer = layer.Layer(name=layername)
-        self.layer._surface.observers.append(self.doc.layer_modified_cb)
+        self.layer = layer.PaintingLayer(name=layername)
+        self.layer.set_symmetry_axis(self.doc.get_symmetry_axis())
     
     def redo(self):
-        self.doc.layers.append(self.layer)
-        self.prev_idx = self.doc.layer_idx
-        self.doc.layer_idx = len(self.doc.layers) - 1
+        layers = self.doc.layer_stack
+        self.prev_path = layers.get_current_path()
+        layers.deepinsert(self.prev_path, self.layer)
+        inserted_path = layers.deepindex(self.layer)
+        layers.set_current_path(inserted_path)
         
         self.timeline[self.lidx][self.idx] = self.frame
         self.frame.add_cel(self.layer)
-        self._notify_canvas_observers([self.layer])
         self.doc.ani.update_opacities()
         self.doc.ani.sort_layers()
         self._notify_document_observers()
     
     def undo(self):
-        self.doc.layers.remove(self.layer)
-        self.doc.layer_idx = self.prev_idx
+        layers = self.doc.layer_stack
+        layers.deepremove(self.layer)
+        layers.set_current_path(self.prev_path)
+        self.prev_path = None
         self.timeline[self.lidx].pop(self.idx)
-        self._notify_canvas_observers([self.layer])
         self.doc.ani.update_opacities()
         self.doc.ani.sort_layers()
         self._notify_document_observers()
 
 
-class RemoveFrame(Action):
+class RemoveFrame(Command):
     display_name = _("Remove Frame")
     def __init__(self, doc, idx, l_idx=None):
         self.doc = doc
         self.timeline = doc.ani.timeline
         self.idx = idx
-        self.prev_idx = None
         self.layer = l_idx
         self.frame = self.timeline[self.layer][self.idx]
-        
+        self.prev_path = None
+        if self.frame.cel:
+            layers = self.doc.layer_stack
+            self.removed_path = layers.deepindex(self.frame.cel)
+            self.replacement_layer = None
         
     def redo(self):
-        if self.frame.cel:
-            layer = self.frame.cel
-            self.doc.layers.remove(layer)
-            self.prev_idx = self.doc.layer_idx
-            self.doc.layer_idx = len(self.doc.layers) - 1
-            self._notify_canvas_observers([layer])
-
         self.removed = self.timeline[self.layer].remove_frames(self.idx)
+
+        if self.frame.cel:
+            layers = self.doc.layer_stack
+            self.prev_path = layers.get_current_path()
+            layers.deeppop(self.removed_path)
+            path = layers.get_current_path()
+            path_above = layers.deepget(path[:-1])
+            if len(layers) == 0:
+                logger.debug("Removed last layer")
+                if self.doc.CREATE_PAINTING_LAYER_IF_EMPTY:
+                    logger.debug("Replacing removed layer")
+                    repl = self.replacement_layer
+                    if repl is None:
+                        repl = lib.layer.PaintingLayer()
+                        repl.set_symmetry_axis(self.doc.get_symmetry_axis())
+                        self.replacement_layer = repl
+                        repl.name = layers.get_unique_name(repl)
+                    layers.append(repl)
+                    layers.set_current_path((0,))
+
+            cel = self.timeline.layer.cel_at(self.timeline.idx)
+            if cel is not None:
+                # Select the corresponding layer:
+                layer_path = layers.deepindex(cel)
+                layers.set_current_path(layer_path)
+            else:
+                layers.set_current_path((0,))
         
         self.doc.ani.update_opacities()
         self.doc.ani.sort_layers()
@@ -202,16 +233,18 @@ class RemoveFrame(Action):
     def undo(self):
         self.timeline[self.layer].insert_frames(self.idx, self.removed)
         if self.frame.cel:
-            self.doc.layers.append(self.frame.cel)
-            self.doc.layer_idx = self.prev_idx
-            self._notify_canvas_observers([self.frame.cel])
+            layers = self.doc.layer_stack
+            if self.replacement_layer is not None:
+                layers.deepremove(self.replacement_layer)
+            layers.deepinsert(self.removed_path, self.frame.cel)
+            layers.set_current_path(self.prev_path)
         self.doc.ani.update_opacities()
         self.doc.ani.sort_layers()
         self.doc.ani.cleared = True
         self._notify_document_observers()
 
 
-class PasteCel(Action):
+class PasteCel(Command):		#@TODO
     display_name = _("Paste cel")
     def __init__(self, doc, frame):
         self.doc = doc
@@ -221,17 +254,19 @@ class PasteCel(Action):
         self.prev_cel = self.frame.cel
         self.operation = self.doc.ani.edit_operation
         if self.operation == 'copy':
+            self.prev_path = None
             snapshot = self.doc.ani.edit_frame.cel.save_snapshot()
-            self.new_layer = layer.Layer()
+            self.new_layer = layer.PaintingLayer()
             self.new_layer.load_snapshot(snapshot)
-            self.new_layer.content_observers.append(self.doc.layer_modified_cb)
             self.new_layer.set_symmetry_axis(doc.get_symmetry_axis())
 
     def redo(self):
-
         if self.operation == 'copy':
-            self.doc.layers.append(self.new_layer)
-            self._notify_canvas_observers([self.new_layer])
+            layers = self.doc.layer_stack
+            self.prev_path = layers.get_current_path()
+            layers.deepinsert(self.prev_path, self.new_layer)
+            inserted_path = layers.deepindex(self.new_layer)
+            layers.set_current_path(inserted_path)
             self.frame.add_cel(self.new_layer)
         elif self.operation == 'cut':
             self.frame.add_cel(self.doc.ani.edit_frame.cel)
@@ -251,15 +286,15 @@ class PasteCel(Action):
         self.doc.ani.edit_frame = self.prev_edit_frame
         self.frame.add_cel(self.prev_cel)
         if self.operation == 'copy':
-            self.doc.layers.remove(self.new_layer)
-            self.doc.layer_idx -= 1
-            self._notify_canvas_observers([self.doc.ani.edit_frame.cel])
+            layers = self.doc.layer_stack
+            layers.deepremove(self.new_layer)
+            layers.set_current_path(self.prev_path)
         self.doc.ani.update_opacities()
         self.doc.ani.sort_layers()
         self._notify_document_observers()
 
 
-class InsertLayer(Action):
+class InsertLayer(Command):
     display_name = _("Insert Layer")
     def __init__(self, doc, idx):
         self.doc = doc
@@ -281,31 +316,49 @@ class InsertLayer(Action):
         self._notify_document_observers()
 
 
-class RemoveLayer(Action):
+class RemoveLayer(Command):
     display_name = _("Remove Layer")
     def __init__(self, doc, idx):
         self.doc = doc
         self.timeline = doc.ani.timeline
         self.idx = idx
-        self.prev_idx = None
+        self.prev_path = None
         self.replaced = False
+        self.replacement_layer = None
         
     def redo(self):
         self.removed_layer = self.timeline.remove_layer(self.idx)
+        layers = self.doc.layer_stack
+        self.prev_path = layers.get_current_path()
         for c in self.removed_layer.get_all_cels():
-            self.doc.layers.remove(c)
-        self.prev_idx = self.doc.layer_idx
+            layers.deeppop(layers.deepindex(c))
+        path = layers.get_current_path()
+        path_above = layers.deepget(path[:-1])
+        if len(layers) == 0:
+            logger.debug("Removed last layer")
+            if self.doc.CREATE_PAINTING_LAYER_IF_EMPTY:
+                logger.debug("Replacing removed layer")
+                repl = self.replacement_layer
+                if repl is None:
+                    repl = lib.layer.PaintingLayer()
+                    repl.set_symmetry_axis(self.doc.get_symmetry_axis())
+                    self.replacement_layer = repl
+                    repl.name = layers.get_unique_name(repl)
+                layers.append(repl)
+                layers.set_current_path((0,))
 
         if len(self.timeline) == 0:
             self.timeline.append_layer()
             self.timeline.layer_idx = 0
             self.replaced = True
 
-        new_idx = self.timeline.layer.cel_at(self.idx)
-        if new_idx is not None:
-            self.doc.layer_idx = self.doc.layers.index(new_idx)
+        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        if cel is not None:
+            # Select the corresponding layer:
+            layer_path = layers.deepindex(cel)
+            layers.set_current_path(layer_path)
         else:
-            self.doc.layer_idx = 0
+            layers.set_current_path((0,))
 
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
@@ -313,13 +366,16 @@ class RemoveLayer(Action):
         self._notify_document_observers()
             
     def undo(self):
+        layers = self.doc.layer_stack
         if self.replaced:
             self.timeline.remove_layer()
             self.timeline.layer_idx = 0
+        if self.replacement_layer is not None:
+            layers.deepremove(self.replacement_layer)
         for c in self.removed_layer.get_all_cels():
-            self.doc.layers.insert(c)
-        self.timeline.insert_layer(self.removed_layer, self.idx)
-        self.doc.layer_idx = self.prev_idx
+            layers.deepinsert(self.prev_path, c)
+        layers.set_current_path(self.prev_path)
+        self.timeline.insert_layer(self.idx, self.removed_layer)
 
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True

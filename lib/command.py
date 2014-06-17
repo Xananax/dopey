@@ -1010,8 +1010,6 @@ class RestackLayer (Command):
             affected.append(oldleaf)
         else:
             src = rootstack.deeppop(src_path_after)
-            print src
-            print list(rootstack)
         self._src_path_after = None
         # Insert it back where it came from
         rootstack.deepinsert(src_path, src)

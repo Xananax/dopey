@@ -85,7 +85,7 @@ class FrameList(dict):
         self.visible = True
         self.opacity = 1.0
         self.locked = False
-        self.composite = 'svg:src-over'
+        self.composite = 0
         for k in kargs:
             self[k] = kargs[k]
 
@@ -275,6 +275,13 @@ class TimeLine(list):
 
     def setup_active_cels(self, active_cels):
         self.active_cels.update(active_cels)
+
+    def cel_index(self, value):
+        for j, jl in enumerate(self):
+            for i in jl:
+                if self[j][i].cel == value:
+                    return (j, i)
+        return None
 
     def cleanup(self):
         for layer in self:
@@ -652,5 +659,5 @@ class TimeLine(list):
         if len(old_order) > len(new_order):
             extra = [elem for elem in old_order if elem not in new_order]
             new_order.extend(extra)
-        return new_order[::-1]
+        return new_order
 
