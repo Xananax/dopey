@@ -694,9 +694,23 @@ class TimelineTool(Gtk.VBox):
         self.opacity_scale.set_draw_value(False)
         layer_ctrls_table.attach(opacity_lbl, 0, 1, row, row+1, Gtk.FILL)
         layer_ctrls_table.attach(self.opacity_scale, 1, 2, row, row+1, Gtk.FILL|Gtk.EXPAND)
+        row += 1
 
         self.opacity_scale.connect('value-changed', self.on_opacity_changed)
         self.layer_mode_combo.connect('changed', self.on_layer_mode_changed)
+
+        #(temporary) more layer controls~
+        self.duplicate_button = stock_button(Gtk.STOCK_COPY)
+        self.duplicate_button.connect('clicked', self.on_duplicate)
+        self.duplicate_button.set_tooltip_text(_('Duplicate layer'))
+
+        self.merge_button = stock_button(Gtk.STOCK_DND_MULTIPLE)
+        self.merge_button.connect('clicked', self.on_merge)
+        self.merge_button.set_tooltip_text(_('Merge layer down'))
+        temp_hbox = Gtk.HBox()
+        temp_hbox.pack_start(self.duplicate_button)
+        temp_hbox.pack_start(self.merge_button)
+        layer_ctrls_table.attach(temp_hbox, 0, 2, row, row+1, Gtk.FILL|Gtk.EXPAND)
 
 
         # playback controls:
@@ -870,6 +884,7 @@ class TimelineTool(Gtk.VBox):
         self.cut_button.set_sensitive(self.ani.can_cutcopy())
         self.copy_button.set_sensitive(self.ani.can_cutcopy())
         self.paste_button.set_sensitive(self.ani.can_paste())
+        self.merge_button.set_sensitive(self.ani.can_merge())
         self._change_player_buttons()
 
     def _call_player(self, use_lightbox=False):
@@ -925,6 +940,12 @@ class TimelineTool(Gtk.VBox):
     def on_paste(self, button):
         self.ani.paste_cel()
 
+
+    def on_merge(self, *ignore):
+        self.ani.merge_layers()
+
+    def on_duplicate(self, *ignore):
+        self.ani.duplicate_layer()
 
     def update_opacity_tooltip(self):
         scale = self.opacity_scale

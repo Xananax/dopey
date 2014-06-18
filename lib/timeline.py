@@ -145,13 +145,13 @@ class FrameList(dict):
         try:
             return min(self)
         except:
-            return None
+            return 0
 
     def get_last(self):
         try:
             return max(self)
         except:
-            return None
+            return 0
 
     def index(self, value):
         for i in self:
@@ -299,7 +299,7 @@ class TimeLine(list):
         first = None
         for layer in self:
             fi = layer.get_first()
-            if (fi < first or first is None) and fi is not None: first = fi
+            if fi < first or first is None: first = fi
         if first is None: first = 0
         return first
 
@@ -667,5 +667,10 @@ class TimeLine(list):
         if len(old_order) > len(new_order):
             extra = [elem for elem in old_order if elem not in new_order]
             new_order.extend(extra)
+        #move current cels to bottom
+        #@TODO: make this its own function so sort is called less?
+        current = [new_order.pop(new_order.index(cel)) for cel in self.cels_at(self.idx)]
+        for c in current:
+            new_order.append(c)
         return new_order
 

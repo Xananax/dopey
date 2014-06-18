@@ -8,6 +8,7 @@
 
 from command import Command, SelectLayer
 import layer, timeline
+from copy import deepcopy
 from gettext import gettext as _
 
 class SelectFrame(Command):
@@ -54,7 +55,7 @@ class SelectAnimationLayer(Command):
         self.prev_idx = self.timeline.idx
         self.timeline.select_layer(self.idx)
 
-        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        cel = self.timeline.cel
         layers = self.doc.layer_stack
         if cel is not None:
             # Select the corresponding layer:
@@ -217,7 +218,7 @@ class RemoveFrame(Command):
                     layers.append(repl)
                     layers.set_current_path((0,))
 
-            cel = self.timeline.layer.cel_at(self.timeline.idx)
+            cel = self.timeline.cel
             if cel is not None:
                 # Select the corresponding layer:
                 layer_path = layers.deepindex(cel)
@@ -352,7 +353,7 @@ class RemoveLayer(Command):
             self.timeline.layer_idx = 0
             self.replaced = True
 
-        cel = self.timeline.layer.cel_at(self.timeline.idx)
+        cel = self.timeline.cel
         if cel is not None:
             # Select the corresponding layer:
             layer_path = layers.deepindex(cel)
@@ -380,5 +381,150 @@ class RemoveLayer(Command):
         self.doc.ani.update_opacities()
         self.doc.ani.cleared = True
         self.doc.ani.sort_layers()
+        self._notify_document_observers()
+
+
+class MergeAnimatedLayers(Command):
+    display_name = _("Merge Down")
+    def __init__(self, doc, layers):
+        self.doc = doc
+        self.timeline = doc.ani.timeline
+        self.indices = [self.timeline.index(l) for l in layers]
+        self.unmerged_layers = layers
+        self.merged_layer = None
+
+    def redo(self):
+        rootstack = self.doc.layer_stack
+        merged = self.merged_layer
+        if merged is None:
+            merged = timeline.FrameList()
+            start = min([l.get_first() for l in self.unmerged_layers])
+            stop = max([l.get_last() for l in self.unmerged_layers])
+            for i in range(start, stop + 1):
+                if reduce(lambda a,b:a and b,
+                          [i not in l for l in self.unmerged_layers]):
+                    continue
+                is_key, skip_visible, cel, desc = False, False, None, ''
+                is_key = reduce(lambda a,b:a or b,
+                                [l[i].is_key for l in self.unmerged_layers])
+                skip_visible = reduce(lambda a,b:a and b,
+                                      [l[i].skip_visible for l in self.unmerged_layers])
+                desc = reduce(lambda a,b:a and b and a + _(', ') + b or b and b or a,
+                              [l[i].description for l in self.unmerged_layers])
+                if reduce(lambda a,b:a or b,
+                          [l[i].cel for l in self.unmerged_layers]):
+                    cel = self.doc.ani.merge([l.cel_at(i) for l in self.unmerged_layers])
+                    cel.set_symmetry_axis(self.doc.get_symmetry_axis())
+                merged[i] = timeline.Frame(is_key, skip_visible, cel, desc)
+            self.merged_layer = merged
+
+        idx = max(self.indices) + 1
+        if idx < len(self.timeline):
+            following = self.timeline[idx]
+            last = False
+        else:
+            last = True
+        for i in sorted(self.indices, reverse=True):
+            self.timeline.pop(i)
+        if last:
+            self.idx = len(self.timeline)
+        else:
+            self.idx = self.timeline.index(following)
+        self.timeline.insert(self.idx, merged)
+
+        for layer in self.unmerged_layers:
+            for i in layer:
+                if layer[i].cel:
+                    rootstack.deeppop(rootstack.deepindex(layer[i].cel))
+        for i in merged:
+            if merged[i].cel:
+                rootstack.deepinsert((0,), merged[i].cel)
+
+        self.prev_idx = self.timeline.layer_idx
+        self.timeline.layer_idx = self.idx
+        cel = self.timeline.cel
+        if cel is not None:
+            # Select the corresponding layer:
+            layer_path = rootstack.deepindex(cel)
+            rootstack.set_current_path(layer_path)
+        else:
+            rootstack.set_current_path((0,))
+
+        self.doc.ani.sort_layers()
+        self.doc.ani.update_opacities()
+        self._notify_document_observers()
+
+    def undo(self):
+        rootstack = self.doc.layer_stack
+
+        for nl, layer in enumerate(self.unmerged_layers):
+            for i in layer:
+                if layer[i].cel:
+                    rootstack.deepinsert((self.indices[nl],), layer[i].cel)
+        for i in self.merged_layer:
+            if self.merged_layer[i].cel:
+                rootstack.deeppop(rootstack.deepindex(self.merged_layer[i].cel))
+
+        self.timeline.pop(self.timeline.index(self.merged_layer))
+        for i, j in sorted(enumerate(self.indices), key=lambda x:x[1], reverse=True):
+            self.timeline.insert(j, self.unmerged_layers[i])
+
+        self.timeline.layer_idx = self.prev_idx
+        cel = self.timeline.cel
+        if cel is not None:
+            # Select the corresponding layer:
+            layer_path = rootstack.deepindex(cel)
+            rootstack.set_current_path(layer_path)
+        else:
+            rootstack.set_current_path((0,))
+
+        self.doc.ani.sort_layers()
+        self.doc.ani.update_opacities()
+        self._notify_document_observers()
+
+
+
+        return
+
+        rootstack = self.doc.layer_stack
+        merged = self._merged_layer
+        removed = rootstack.deeppop(self._upper_path)
+        assert removed is merged
+        rootstack.deepinsert(self._upper_path, self._lower_layer)
+        rootstack.deepinsert(self._upper_path, self._upper_layer)
+        assert rootstack.deepget(self._upper_path) is self._upper_layer
+        assert rootstack.deepget(self._lower_path) is self._lower_layer
+        self._upper_layer = None
+        self._lower_layer = None
+        rootstack.current_path = self._upper_path
+
+
+class DuplicateAnimatedLayer(Command):
+    display_name = _("Duplicate Layer")
+    def __init__(self, doc, **kwds):
+        self.doc = doc
+        self.timeline = doc.ani.timeline
+        self.idx = self.timeline.layer_idx
+        self.new_layer = deepcopy(self.timeline.layer)
+
+    def redo(self):
+        layers = self.doc.layer_stack
+        for i in self.new_layer:
+            cel = self.new_layer[i].cel
+            if cel:
+                path = layers.deepindex(self.timeline.layer[i].cel)
+                layers.deepinsert(path, cel)
+        self.timeline.insert(self.idx, self.new_layer)
+        self.doc.ani.sort_layers()
+        self._notify_document_observers()
+
+    def undo(self):
+        layers = self.doc.layer_stack
+        for i in self.new_layer:
+            cel = self.new_layer[i].cel
+            if cel:
+                path = layers.deepindex(cel)
+                layers.deeppop(path)
+        self.timeline.pop(self.idx)
         self._notify_document_observers()
 

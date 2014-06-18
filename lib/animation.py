@@ -15,13 +15,12 @@ import tempfile
 from subprocess import call
 
 import pixbufsurface
+import tiledsurface
 
 import anicommand
 from timeline import TimeLine
 from xdna import XDNA
 from mypaintlib import combine_mode_get_info
-from tiledsurface import OPENRASTER_COMBINE_MODES
-from tiledsurface import DEFAULT_COMBINE_MODE
 
 
 class Animation(object):
@@ -187,8 +186,8 @@ class Animation(object):
                     self.timeline[j].visible = raster_frames[j]['visible']
                     self.timeline[j].opacity = raster_frames[j]['opacity']
                     self.timeline[j].locked = raster_frames[j]['locked']
-                    self.timeline[j].composite = OPENRASTER_COMBINE_MODES.get(
-                        str(raster_frames[j]['composite']), DEFAULT_COMBINE_MODE)
+                    self.timeline[j].composite = tiledsurface.OPENRASTER_COMBINE_MODES.get(
+                        str(raster_frames[j]['composite']), tiledsurface.DEFAULT_COMBINE_MODE)
                     if 'frames' in raster_frames[j]:
                         for i in raster_frames[j]['frames']:
                             d = raster_frames[j]['frames'][i]
@@ -308,13 +307,7 @@ class Animation(object):
         doc_bbox = self.doc.get_effective_bbox()
 
         for i in range(self.timeline.get_first(), self.timeline.get_last()+1):
-            frame = PaintingLayer()
-            for j in range(len(self.timeline)):
-                cel = self.timeline[j].cel_at(i)
-                visible, opacity = cel.visible, cel.opacity
-                cel.visible, cel.opacity = True, self.timeline[j].opacity
-                cel.merge_into(frame)
-                cel.visible, cel.opacity = visible, opacity
+            frame = self.merge(self.timeline.cels_at(i))
             filename = '%s-%03d%s' % (prefix, i+1, ext)
             frame._surface.save_as_png(filename, *doc_bbox, **kwargs)
 
@@ -554,6 +547,7 @@ class Animation(object):
     def select(self, idx):
         if self.timeline.idx != idx:
             self.doc.do(anicommand.SelectFrame(self.doc, idx))
+            self.sort_layers()
 
     def select_layer(self, idx):
         if self.timeline.layer_idx != idx:
@@ -570,6 +564,18 @@ class Animation(object):
 
     def remove_layer(self, idx=None):
         self.doc.do(anicommand.RemoveLayer(self.doc, idx))
+
+    def can_merge(self):
+        return self.timeline.layer_idx < len(self.timeline) - 1
+
+    def merge_layers(self):
+        assert self.timeline.layer_idx < len(self.timeline) - 1
+        top = self.timeline.layer
+        bottom = self.timeline[self.timeline.layer_idx + 1]
+        self.doc.do(anicommand.MergeAnimatedLayers(self.doc, (top, bottom)))
+
+    def duplicate_layer(self):
+        self.doc.do(anicommand.DuplicateAnimatedLayer(self.doc))
 
     def set_layer_opacity(self, opac):		#@TODO: add to command stack
         self.timeline.layer.opacity = opac
@@ -591,12 +597,15 @@ class Animation(object):
         selection = self.doc.layer_stack.current
         if selection not in new_order: return
         rename = False
-        for nl, l in enumerate(new_order):
-            src_path = layers.deepindex(l)
-            tar_path = (nl,)
-            if src_path != tar_path:
-                rename = True
-                self.doc.do(command.RestackLayer(self.doc, src_path, tar_path))
+        changed = True
+        while changed:
+            changed = False
+            for nl, l in enumerate(new_order):
+                src_path = layers.deepindex(l)
+                tar_path = (nl,)
+                if src_path != tar_path:
+                    changed, rename = True, True
+                    self.doc.do(command.RestackLayer(self.doc, src_path, tar_path))
         layers.set_current_path(layers.canonpath(path=layers.deepindex(selection)))
         if rename: self.rename_layers()
 
@@ -641,3 +650,40 @@ class Animation(object):
     def paste_cel(self):
         frame = self.timeline.get_selected()
         self.doc.do(anicommand.PasteCel(self.doc, frame))
+
+    def merge(self, layers):
+        merge_layers = []
+        for l in layers[::-1]:
+            if l is None: continue
+            vis, opa = l.visible, l.opacity
+            idx = self.timeline.cel_index(l)
+            l.visible, l.opacity = self.timeline[idx[0]].visible, self.timeline[idx[0]].opacity
+            p = self.doc.layer_stack.deepindex(l)
+            if p is None: continue
+            layer = self.doc.layer_stack.layer_new_normalized(p)
+            merge_layers.append(layer)
+            l.visible, l.opacity = vis, opa
+        # Build output strokemap, determine set of data tiles to merge
+        dstlayer = PaintingLayer()
+        tiles = set()
+        strokes = []
+        for layer in merge_layers:
+            tiles.update(layer.get_tile_coords())
+            assert isinstance(layer, PaintingLayer) and not layer.locked
+            dstlayer.strokes[:0] = layer.strokes
+        # Build a (hopefully sensible) combined name too
+        names = [l.name for l in reversed(merge_layers)
+                 if l.has_interesting_name()]
+        #TRANSLATORS: name combining punctuation for Merge Down
+        name = _(u", ").join(names)
+        if name != '':
+            dstlayer.name = name
+        # Rendering loop
+        N = tiledsurface.N
+        dstsurf = dstlayer._surface
+        for tx, ty in tiles:
+            with dstsurf.tile_request(tx, ty, readonly=False) as dst:
+                for layer in merge_layers:
+                    layer.composite_tile(dst, True, tx, ty, mipmap_level=0)
+        return dstlayer
+
