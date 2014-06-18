@@ -834,8 +834,9 @@ class TimelineTool(Gtk.VBox):
         self.emit('update')
         
     def do_change_selected_layer(self, n):
-        if 0 <= n < len(self.data):
+        if 0 <= n < len(self.data) and n != self.data.layer_idx:
             self.ani.select_layer(n)
+            self.app.doc.layerblink_state.activate()
             self.emit('update')
 
     def do_scroll_amount(self, x, y):

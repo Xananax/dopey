@@ -867,11 +867,15 @@ class DrawWindow (Gtk.Window):
 
     def previous_ani_layer_cb(self, action):
         ani = self.app.doc.ani.model   # this is not set yet in __init__
-        ani.previous_layer()
+        if ani.timeline.has_previous_layer():
+            ani.previous_layer()
+            self.app.doc.layerblink_state.activate()
 
     def next_ani_layer_cb(self, action):
         ani = self.app.doc.ani.model
-        ani.next_layer()
+        if ani.timeline.has_next_layer():
+            ani.next_layer()
+            self.app.doc.layerblink_state.activate()
 
     def previous_frame_cb(self, action):
         ani = self.app.doc.ani.model

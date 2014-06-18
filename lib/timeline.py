@@ -490,6 +490,14 @@ class TimeLine(list):
     def layer(self):
         self.remove_layer()
 
+    @property
+    def frame(self):
+        return self[self.layer_idx][self.idx]
+
+    @property
+    def cel(self):
+        return self[self.layer_idx].cel_at(self.idx)
+
     def append_layer(self, layer=None, description="Untitled layer", **kargs):
         if type(layer) is FrameList:
             self.append(layer)

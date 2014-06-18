@@ -499,6 +499,7 @@ class Animation(object):
         self.doc.do(anicommand.ToggleSkipVisible(self.doc, frame))
 
     def previous_frame(self, with_cel=False):
+        if self.timeline.idx == 0: return
         self.select(self.timeline.idx - 1)
 
     def next_frame(self, with_cel=False):
@@ -559,12 +560,10 @@ class Animation(object):
             self.doc.do(anicommand.SelectAnimationLayer(self.doc, idx))
 
     def previous_layer(self):
-        if self.timeline.has_previous_layer():
-            self.select_layer(self.timeline.layer_idx - 1)
+        self.select_layer(self.timeline.layer_idx - 1)
 
     def next_layer(self):
-        if self.timeline.has_next_layer():
-            self.select_layer(self.timeline.layer_idx + 1)
+        self.select_layer(self.timeline.layer_idx + 1)
 
     def add_layer(self, idx=None):
         self.doc.do(anicommand.InsertLayer(self.doc, idx))
