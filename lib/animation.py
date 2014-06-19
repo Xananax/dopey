@@ -9,7 +9,7 @@
 import os
 import glob
 from gettext import gettext as _
-from layer import PaintingLayer
+import layer
 import json
 import tempfile
 from subprocess import call
@@ -85,11 +85,11 @@ class Animation(object):
             }
         }
 
-        for l, layer in enumerate(self.timeline):
+        for l, lyr in enumerate(self.timeline):
             data['xsheet']['raster_frame_lists'].append([])
-            for nf in range(len(layer)):
-                if nf in layer:
-                    f = layer[nf]
+            for nf in range(len(lyr)):
+                if nf in lyr:
+                    f = lyr[nf]
                     if f.cel is not None:
                         layer_idx = self.doc.layers.index(f.cel)
                     else:
@@ -126,18 +126,18 @@ class Animation(object):
         }
 
         self.timeline.cleanup()
-        for l, layer in enumerate(self.timeline):
-            compop = combine_mode_get_info(layer.composite).get("name", '')
+        for l, lyr in enumerate(self.timeline):
+            compop = combine_mode_get_info(lyr.composite).get("name", '')
             data['xsheet']['raster_frame_lists'].append({
-                'description': layer.description,
-                'visible': layer.visible,
-                'opacity': layer.opacity,
-                'locked': layer.locked,
+                'name': lyr.name,
+                'visible': lyr.visible,
+                'opacity': lyr.opacity,
+                'locked': lyr.locked,
                 'composite': compop,
                 'frames': {}
             })
-            for nf in layer:
-                f = layer[nf]
+            for nf in lyr:
+                f = lyr[nf]
                 if f.cel is not None:
                     layer_path = self.doc.layer_stack.deepindex(f.cel)
                 else:
@@ -182,54 +182,25 @@ class Animation(object):
                 # load with current format (dictionaries)
                 for j in range(len(raster_frames)):
                     self.timeline.append_layer()
-                    self.timeline[j].description = str(raster_frames[j]['description'])
+                    self.timeline[j].name = str(raster_frames[j]['name'])
                     self.timeline[j].visible = raster_frames[j]['visible']
                     self.timeline[j].opacity = raster_frames[j]['opacity']
                     self.timeline[j].locked = raster_frames[j]['locked']
                     self.timeline[j].composite = tiledsurface.OPENRASTER_COMBINE_MODES.get(
                         str(raster_frames[j]['composite']), tiledsurface.DEFAULT_COMBINE_MODE)
-                    if 'frames' in raster_frames[j]:
-                        for i in raster_frames[j]['frames']:
-                            d = raster_frames[j]['frames'][i]
-                            f = self.timeline[j][int(i)]
-                            if d['path'] is not None:
-                                cel = self.doc.layer_stack.deepget(d['path'])
-                                if cel is None:
-                                    cel = PaintingLayer()
-                                    self.doc.layer_stack.append(cel)
-                            else:
-                                cel = None
-                            f.is_key = d['is_key']
-                            f.description = d['description']
-                            f.cel = cel
-                    else:		#(temporary) legacy support
-                        for ui in raster_frames[j]:
-                            try:
-                                i = int(ui)
-                            except ValueError:
-                                continue
-                            d = raster_frames[j][ui]
-                            f = self.timeline[j][i]
-                            if 'path' in d:
-                                if d['path'] is not None:
-                                    cel = self.doc.layer_stack.deepget(d['path'])
-                                    if cel is None:
-                                        cel = PaintingLayer()
-                                        self.doc.layer_stack.append(cel)
-                                else:
-                                    cel = None
-                            else:
-                                if d['idx'] is not None:
-                                    cel = self.doc.layer_stack.deepget(
-                                          (len(self.doc.layer_stack)-int(d['idx'])-1,))
-                                    if cel is None:
-                                        cel = PaintingLayer()
-                                        self.doc.layer_stack.append(cel)
-                                else:
-                                    cel = None
-                            f.is_key = d['is_key']
-                            f.description = str(d['description'])
-                            f.cel = cel
+                    for i in raster_frames[j]['frames']:
+                        d = raster_frames[j]['frames'][i]
+                        f = self.timeline[j][int(i)]
+                        if d['path'] is not None:
+                            cel = self.doc.layer_stack.deepget(d['path'])
+                            if cel is None:
+                                cel = layer.PaintingLayer()
+                                self.doc.layer_stack.append(cel)
+                        else:
+                            cel = None
+                        f.is_key = d['is_key']
+                        f.description = d['description']
+                        f.cel = cel
                 
             else:
                 # load with revision 1 format (lists)
@@ -242,7 +213,7 @@ class Animation(object):
                                 cel = self.doc.layer_stack.deepget(
                                        (len(self.doc.layer_stack)-int(d['idx'])-1,))
                             else:
-                                cel = PaintingLayer()
+                                cel = layer.PaintingLayer()
                                 self.doc.layer_stack.append(cel)
                         else:
                             cel = None
@@ -265,7 +236,7 @@ class Animation(object):
                         cel = self.doc.layer_stack.deepget(
                                  (len(self.doc.layer_stack)-int(d['idx'])-1,))
                     else:
-                        cel = PaintingLayer()
+                        cel = layer.PaintingLayer()
                         self.doc.layer_stack.append(cel)
                 else:
                     cel = None
@@ -422,18 +393,21 @@ class Animation(object):
                 continue
             cel.visible = vis
 
-    def generate_layername(self, idx, l_idx, description):
+    def number_to_letter(self, idx):
         letter = ""
         try:
-            digits = int(math.log(l_idx, 26) + 1)
+            digits = int(math.log(idx, 26) + 1)
         except:
             digits = 1
         for i in range(digits)[::-1]:
-            n = l_idx // (26 ** i)
+            n = idx // (26 ** i)
             if i == 0: n += 1
             letter += chr(n+64)
-            l_idx -= (26 ** i) * n
-        layername = "<" + letter + "> CEL " + str(idx + 1)
+            idx -= (26 ** i) * n
+        return letter
+
+    def generate_layername(self, idx, description):
+        layername = "CEL " + str(idx + 1)
         if description != '':
             layername += ": " + description
         return layername
@@ -522,17 +496,17 @@ class Animation(object):
         if frame is None: frame = self.timeline.get_selected()
         self.doc.do(anicommand.ChangeDescription(self.doc, frame, self.timeline.layer_idx, self.timeline.idx, new_description))
     
-    def add_cel(self, layer=None, frame=None):
-        if layer is None: layer = self.timeline.layer_idx
+    def add_cel(self, lyr=None, frame=None):
+        if lyr is None: lyr = self.timeline.layer_idx
         if frame is None: frame = self.timeline.idx
-        if self.timeline[layer][frame].cel is not None:
+        if self.timeline[lyr][frame].cel is not None:
             return
-        self.doc.do(anicommand.AddFrame(self.doc, layer, frame))
+        self.doc.do(anicommand.AddFrame(self.doc, lyr, frame))
 
-    def remove_frame(self, layer=None, frame=None):
-        if layer is None: layer = self.timeline.layer_idx
+    def remove_frame(self, lyr=None, frame=None):
+        if lyr is None: lyr = self.timeline.layer_idx
         if frame is None: frame = self.timeline.idx
-        self.doc.do(anicommand.RemoveFrame(self.doc, frame, layer))
+        self.doc.do(anicommand.RemoveFrame(self.doc, frame, lyr))
 
     def move_frame(self, frame, amount):	#@TODO: add to undo stack
         self.timeline.layer.insert(frame+amount,self.timeline.layer.pop(frame))
@@ -568,7 +542,7 @@ class Animation(object):
     def can_merge(self):
         return self.timeline.layer_idx < len(self.timeline) - 1
 
-    def merge_layers(self):
+    def merge_layer_down(self):
         assert self.timeline.layer_idx < len(self.timeline) - 1
         top = self.timeline.layer
         bottom = self.timeline[self.timeline.layer_idx + 1]
@@ -590,31 +564,104 @@ class Animation(object):
         self.doc.call_doc_observers()
 
     def sort_layers(self):
-        #@TODO: temporary implimentation using restack command (murders command stack)
-        import command
+        #@TODO: remove unneeded stacks
+        #@TODO: make another method to pull the active cels to separate group
         layers = self.doc.layer_stack
-        new_order = self.timeline.get_order(layers)
+        #new_order = self.timeline.get_order(layers)
+        new_order = self.timeline.get_effective_paths()
+        
+        def get_layer_list():
+            items = list(layers)
+            frames = [y[2] for y in new_order]
+            while len(items) > 0:
+                item = items.pop(0)
+                try:
+                    items.extend(list(item))
+                except TypeError:
+                    if item not in frames:
+                        yield item
+
+        extra = [x for x in get_layer_list()]
+        extra_order = []
+        if len(extra) > 0:
+            #if there are unanimated layers, put them on top and shuffle everything else down
+            for ne, e in enumerate(extra):
+                extra_order.append(((0,ne), None, e))
+            new_order, tmp_order = [], new_order
+            for pl, nl, l in tmp_order:
+                path = (pl[0] + 1,) + pl[1:]
+                new_order.append((path, nl, l))
+
         selection = self.doc.layer_stack.current
-        if selection not in new_order: return
-        rename = False
         changed = True
         while changed:
             changed = False
-            for nl, l in enumerate(new_order):
-                src_path = layers.deepindex(l)
-                tar_path = (nl,)
+            for pl, nl, src in new_order + extra_order:
+                src_path = layers.deepindex(src)
+                tar_path = pl
                 if src_path != tar_path:
-                    changed, rename = True, True
-                    self.doc.do(command.RestackLayer(self.doc, src_path, tar_path))
-        layers.set_current_path(layers.canonpath(path=layers.deepindex(selection)))
-        if rename: self.rename_layers()
+                    changed = True
+                    affected = []
+                    tar_parent = layers.deepget(tar_path[:-1])
+                    parent_exists = isinstance(tar_parent, layer.LayerStack)
+                    #make placeholder
+                    if src_path != None:
+                        placeholder = layer.PlaceholderLayer(name="moving")
+                        src_parent = layers.deepget(src_path[:-1])
+                        src_index = src_path[-1]
+                        src_parent[src_index] = placeholder
+                        affected.append(src)
+                    else:
+                        placeholder = None
 
-    def rename_layers(self):
-        for l, layer in enumerate(self.timeline):
-            for f in layer:
-                if layer[f].has_cel():
-                    new_name = self.generate_layername(f, l, layer[f].description)
-                    layer[f].cel.name = new_name
+                    tar_parent = layers.deepget(tar_path[:-1])
+                    #do the move
+                    if parent_exists:
+                        tar_index = tar_path[-1]
+                        tar_parent.insert(tar_index, src)
+                    elif tar_parent is None:
+                        #make parent if it doesnt exist
+                        parent = layer.LayerStack()
+                        tar_gparent = layers.deepget(tar_path[:-2])
+                        tar_gparent.append(parent)
+                        parent.append(src)
+                    else:
+                        #another layer is where the parent should be, move it
+                        tar_parent_index = tar_path[-2]
+                        tar_gparent = layers.deepget(tar_path[:-2])
+                        parent = layer.LayerStack()
+                        tar_gparent[tar_parent_index] = parent
+                        parent.append(src)
+                        parent.append(tar_parent)
+                        affected.append(tar_parent)
+                    
+                    # Remove placeholder
+                    if placeholder:
+                        layers.deepremove(placeholder)
+
+        # Rename layers as necessary
+        par_name = lambda i, n: n and str(n) or _("Layer ") + str(i+1)
+        for pl, [a, f], l in new_order:
+            #rename this layer if need be
+            placeholder = layer.PlaceholderLayer(name="moving")
+            parent = layers.deepget(pl[:-1])
+            index = pl[-1]
+            cel = parent.pop(index)
+            new_name = self.generate_layername(f, self.timeline[a][f].description)
+            cel.name = new_name		#@TODO: redo paintinglayer naming
+            parent.insert(index, cel)
+
+            #rename parent if need be
+            if self.timeline[a].stack != pl[:-1]:
+                parent.name = par_name(a, self.timeline[a].name)
+                self.timeline[a].stack = pl[:-1]
+        if len(extra) > 0:
+            layers.deepget((0,)).name = _("Sketches")
+
+        # Issue redraws
+        layers.set_current_path(layers.canonpath(path=layers.deepindex(selection)))
+        #redraw_bboxes = [a.get_full_redraw_bbox() for a in affected]
+        #self._notify_canvas_observers(redraw_bboxes)
 
 
     def change_opacityfactor(self, opacityfactor):
@@ -660,17 +707,17 @@ class Animation(object):
             l.visible, l.opacity = self.timeline[idx[0]].visible, self.timeline[idx[0]].opacity
             p = self.doc.layer_stack.deepindex(l)
             if p is None: continue
-            layer = self.doc.layer_stack.layer_new_normalized(p)
-            merge_layers.append(layer)
+            lyr = self.doc.layer_stack.layer_new_normalized(p)
+            merge_layers.append(lyr)
             l.visible, l.opacity = vis, opa
         # Build output strokemap, determine set of data tiles to merge
-        dstlayer = PaintingLayer()
+        dstlayer = layer.PaintingLayer()
         tiles = set()
         strokes = []
-        for layer in merge_layers:
-            tiles.update(layer.get_tile_coords())
-            assert isinstance(layer, PaintingLayer) and not layer.locked
-            dstlayer.strokes[:0] = layer.strokes
+        for lyr in merge_layers:
+            tiles.update(lyr.get_tile_coords())
+            assert isinstance(lyr, layer.PaintingLayer) and not lyr.locked
+            dstlayer.strokes[:0] = lyr.strokes
         # Build a (hopefully sensible) combined name too
         names = [l.name for l in reversed(merge_layers)
                  if l.has_interesting_name()]
@@ -683,7 +730,7 @@ class Animation(object):
         dstsurf = dstlayer._surface
         for tx, ty in tiles:
             with dstsurf.tile_request(tx, ty, readonly=False) as dst:
-                for layer in merge_layers:
-                    layer.composite_tile(dst, True, tx, ty, mipmap_level=0)
+                for lyr in merge_layers:
+                    lyr.composite_tile(dst, True, tx, ty, mipmap_level=0)
         return dstlayer
 

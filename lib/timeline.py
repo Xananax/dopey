@@ -80,12 +80,13 @@ class FrameList(dict):
     now in a dictionary, so only the necessary frames actually exist.
 
     """
-    def __init__(self, description='Untitled layer', **kargs):
-        self.description = description
+    def __init__(self, name='Untitled layer', stack=None, **kargs):
+        self.name = name
         self.visible = True
         self.opacity = 1.0
         self.locked = False
         self.composite = 0
+        self.stack = stack
         for k in kargs:
             self[k] = kargs[k]
 
@@ -245,6 +246,7 @@ class TimeLine(list):
         self.idx = 0
         self.layer_idx = 0
         self.fps = 24
+        self.parents = {}
         if opacities is None:
             opacities = {}
         self.opacities = dict(DEFAULT_OPACITIES)
@@ -498,11 +500,11 @@ class TimeLine(list):
     def cel(self):
         return self[self.layer_idx].cel_at(self.idx)
 
-    def append_layer(self, layer=None, description="Untitled layer", **kargs):
+    def append_layer(self, layer=None, name="Untitled layer", stack=None, **kargs):
         if type(layer) is FrameList:
             self.append(layer)
         elif layer is None:
-            self.append(FrameList(description, **kargs))
+            self.append(FrameList(name, stack, **kargs))
         else:
             raise TypeError('append_layer() FrameList expected, got ' + str(type(layer)) + '.')
 
@@ -661,6 +663,33 @@ class TimeLine(list):
                 visible[cel] = False
 
         return opacities, visible
+
+    def get_path(self, layer, frame=None):
+        f, l = 0, 0
+        for i in range(layer):
+            if len(self[i].get_all_cels) > 0:
+                l += 1
+        if frame is None:
+            return (l,)
+        for j in self[layer].get_all_cel_keys():
+            if j > frame:
+                j += 1
+        return (l, f)
+
+    def get_effective_paths(self):
+        paths=[]
+        f, l = 0, 0
+        for i in range(len(self)):
+            has_cel = False
+            for j in range(self[i].get_first(), self[i].get_last()+1)[::-1]:
+                if j not in self[i]: continue
+                if self[i][j].cel is None: continue
+                paths.append(((l,f), (i, j), self[i][j].cel))
+                has_cel = True
+                f += 1
+            f = 0
+            if has_cel: l += 1
+        return paths
 
     def get_order(self, old_order):
         new_order = self.get_all_cels()

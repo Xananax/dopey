@@ -133,7 +133,7 @@ class ChangeDescription(Command):
         self.frame.description = self.new_description
         self._notify_document_observers()
         if self.frame.cel != None:
-            layername = self.doc.ani.generate_layername(self.idx, self.l_idx, self.frame.description)
+            layername = self.doc.ani.generate_layername(self.idx, self.frame.description)
             self.frame.cel.name = layername
 
     def undo(self):
@@ -154,7 +154,7 @@ class AddFrame(Command):
         self.frame = timeline.Frame()
 
         # Create new layer:
-        layername = self.doc.ani.generate_layername(self.idx, self.lidx, self.frame.description)
+        layername = self.doc.ani.generate_layername(self.idx, self.frame.description)
         self.layer = layer.PaintingLayer(name=layername)
         self.layer.set_symmetry_axis(self.doc.get_symmetry_axis())
     
@@ -328,11 +328,11 @@ class RemoveLayer(Command):
         self.replacement_layer = None
         
     def redo(self):
-        self.removed_layer = self.timeline.remove_layer(self.idx)
         layers = self.doc.layer_stack
         self.prev_path = layers.get_current_path()
-        for c in self.removed_layer.get_all_cels():
-            layers.deeppop(layers.deepindex(c))
+        layers.deeppop(self.removed_layer.stack)
+        self.removed_layer = self.timeline.remove_layer(self.idx)
+
         path = layers.get_current_path()
         path_above = layers.deepget(path[:-1])
         if len(layers) == 0:
@@ -398,21 +398,18 @@ class MergeAnimatedLayers(Command):
         merged = self.merged_layer
         if merged is None:
             merged = timeline.FrameList()
-            start = min([l.get_first() for l in self.unmerged_layers])
-            stop = max([l.get_last() for l in self.unmerged_layers])
+            start = min(l.get_first() for l in self.unmerged_layers)
+            stop = max(l.get_last() for l in self.unmerged_layers)
             for i in range(start, stop + 1):
-                if reduce(lambda a,b:a and b,
-                          [i not in l for l in self.unmerged_layers]):
+                if all(i not in l for l in self.unmerged_layers):
                     continue
                 is_key, skip_visible, cel, desc = False, False, None, ''
-                is_key = reduce(lambda a,b:a or b,
-                                [l[i].is_key for l in self.unmerged_layers])
-                skip_visible = reduce(lambda a,b:a and b,
-                                      [l[i].skip_visible for l in self.unmerged_layers])
+                is_key = any(l[i].is_key for l in self.unmerged_layers)
+                skip_visible = all(l[i].skip_visible for l in self.unmerged_layers)
                 desc = reduce(lambda a,b:a and b and a + _(', ') + b or b and b or a,
-                              [l[i].description for l in self.unmerged_layers])
+                              (l[i].description for l in self.unmerged_layers))
                 if reduce(lambda a,b:a or b,
-                          [l[i].cel for l in self.unmerged_layers]):
+                          (l[i].cel for l in self.unmerged_layers)):
                     cel = self.doc.ani.merge([l.cel_at(i) for l in self.unmerged_layers])
                     cel.set_symmetry_axis(self.doc.get_symmetry_axis())
                 merged[i] = timeline.Frame(is_key, skip_visible, cel, desc)

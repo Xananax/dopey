@@ -55,7 +55,7 @@ class LayerWidget(Gtk.DrawingArea):
         if c[0] < x < c[0]+c[2] and c[1] < y < c[1]+c[3]:
             text = _("Remove Layer")
         else:
-            text = self.timeline.data[idx].description
+            text = self.timeline.data[idx].name
         tooltip.set_text(text)
         return True
         
@@ -107,7 +107,7 @@ class LayerWidget(Gtk.DrawingArea):
                 cr.rectangle(x+fwa, 1, 1, wh-1)
                 cr.rectangle(x+1, 0, fwa-1, 1)
                 cr.set_font_size(10)
-                text = textwrap.wrap(l.description, fwa//tw)
+                text = textwrap.wrap(l.name, fwa//tw)
                 lines = int(wh // th)
                 cr.set_source_rgb(0, 0, 0)
                 for nt, t in enumerate(text):
@@ -144,10 +144,10 @@ class LayerWidget(Gtk.DrawingArea):
                 return True
             if event.type == Gdk.EventType._2BUTTON_PRESS:
                 if 0 <= layer < len(self.timeline.data):
-                    description = anidialogs.ask_for(self, _("Change description"),
-                        _("Description"), self.timeline.data[layer].description)
-                    if description:
-                        self.timeline.data[layer].description = description
+                    name = anidialogs.ask_for(self, _("Change layer name"),
+                        _("Name"), self.timeline.data[layer].name)
+                    if name:
+                        self.timeline.data[layer].name = name
                         self.timeline.emit('update')
                 else:
                     self.ani.add_layer(len(self.timeline.data))
@@ -659,6 +659,7 @@ class TimelineTool(Gtk.VBox):
         layer_ctrls_table = Gtk.Table()
         layer_ctrls_table.set_row_spacings(SPACING_CRAMPED)
         layer_ctrls_table.set_col_spacings(SPACING_CRAMPED)
+        layer_ctrls_table.set_vexpand(False)
         row = 0
 
         layer_mode_lbl = Gtk.Label(_('Mode:'))
@@ -707,6 +708,7 @@ class TimelineTool(Gtk.VBox):
         self.merge_button = stock_button(Gtk.STOCK_DND_MULTIPLE)
         self.merge_button.connect('clicked', self.on_merge)
         self.merge_button.set_tooltip_text(_('Merge layer down'))
+
         temp_hbox = Gtk.HBox()
         temp_hbox.pack_start(self.duplicate_button)
         temp_hbox.pack_start(self.merge_button)
@@ -752,7 +754,7 @@ class TimelineTool(Gtk.VBox):
 
 
         self.pack_start(layer_ctrls_table, expand=False)
-        self.pack_start(self.grid)
+        self.pack_start(self.grid, expand=True)
         self.pack_start(framebuttons_hbox, expand=False)
         self.set_size_request(200, -1)
 
@@ -942,7 +944,7 @@ class TimelineTool(Gtk.VBox):
 
 
     def on_merge(self, *ignore):
-        self.ani.merge_layers()
+        self.ani.merge_layer_down()
 
     def on_duplicate(self, *ignore):
         self.ani.duplicate_layer()
