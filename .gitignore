@@ -17,7 +17,7 @@ lib/_mypaintlib.so
 lib/mypaintlib.py
 lib/mypaintlib_wrap.cpp
 lib/mypaintlib_wrap.os
-mypaint
+dopey
 desktop/mypaint-ora-thumbnailer
 options.cache
 *.mo
