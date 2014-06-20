@@ -11,10 +11,6 @@ A list of contributors can be found in the about dialog.
 Building and installing on Linux
 ================================
 
-Update submodules
-
-    $ git submodule update --init
-
 Compile and run:
 
     $ scons
