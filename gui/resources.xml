@@ -1434,7 +1434,7 @@ The circular slices are equiluminant.</property>
       </child>
       <child>
         <object class="GtkToggleAction" id="TimelineTool">
-          <property name="stock_id">mypaint-tool-timeline</property>
+          <property name="icon-name">mypaint-tool-timeline</property>
           <property name="label" translatable="yes"
             context="Menu|Animation|">Timeline Window</property>
           <property name="tooltip" translatable="yes"
