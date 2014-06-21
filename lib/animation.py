@@ -435,6 +435,8 @@ class Animation(object):
         self.player_state = "stop"
 
     def player_next(self, use_lightbox=False):
+        #@TODO: should maybe remove cels from stack before doing this
+        # it causes a lot of unnecessary updates otherwise
         prev_idx = self.timeline.idx
         if self.timeline.has_next():
             self.timeline.goto_next()

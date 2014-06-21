@@ -9,6 +9,8 @@ from gi.repository import Gdk, GdkPixbuf
 
 import cairo
 import textwrap
+import logging
+logger = logging.getLogger(__name__)
 
 import anidialogs
 from gettext import gettext as _
@@ -760,6 +762,49 @@ class TimelineTool(Gtk.VBox):
 
         self.doc.doc_observers.append(self.update)
 
+
+    class clock(object):
+        """
+        Subclass for repeatedly calling the next frame during playback.
+        Continuously checks time and adjusts playback accordingly
+
+        """
+
+        def __init__(self, fps, use_lightbox, call):
+            self.frame_time = 1.0/fps
+            self.use_lightbox, self.call = use_lightbox, call
+            self.prev_t, self.error = GObject.get_current_time(), 0
+            self.prev_ms_per_frame = int(round(1000 * self.frame_time))
+            GObject.timeout_add(self.prev_ms_per_frame, self.tick)
+
+        def tick(self):
+            t0 = GObject.get_current_time()
+            keep_playing = self.call(self.use_lightbox)
+            if not keep_playing:
+                return False
+
+            t1 = GObject.get_current_time()
+            dt = t1-t0
+            # error here is the total error accumulated during playback
+            self.error += t1 - (self.prev_t + self.frame_time)
+            self.prev_t = t0
+
+            ms_per_frame = int(round(1000 * (self.frame_time-dt - self.error)))
+            if ms_per_frame < 0:
+                logger.warning("behind by %.1fms, trying to catch up." \
+                                % (1000*(self.error-self.frame_time)))
+                              #  % (-ms_per_frame))
+                ms_per_frame = 0
+
+            # if the time-per-frame needs to be adjusted at all,
+            # add new timeout and end this one
+            if ms_per_frame != self.prev_ms_per_frame:
+                self.prev_ms_per_frame = ms_per_frame
+                GObject.timeout_add(ms_per_frame, self.tick)
+                return False
+            return keep_playing
+
+
     def update(self, doc=None):
         self.data = self.ani.timeline
         self.data.cleanup()
@@ -890,6 +935,7 @@ class TimelineTool(Gtk.VBox):
         self._change_player_buttons()
 
     def _call_player(self, use_lightbox=False):
+        #@TODO: allow stopping while paused
         self.ani.player_next(use_lightbox)
         keep_playing = True
         if self.ani.player_state == "stop":
@@ -919,9 +965,11 @@ class TimelineTool(Gtk.VBox):
 
         # show first frame immediately, otherwise there's a single frame delay
         # @TODO: it seems to wait one frame before stopping too
-        self._call_player(use_lightbox)
+        #self._call_player(use_lightbox)
 
-        GObject.timeout_add(ms_per_frame, self._call_player, use_lightbox)
+        #GObject.timeout_add(ms_per_frame, self._call_player, use_lightbox)
+
+        self.clock(self.ani.timeline.fps, use_lightbox, self._call_player)
 
 
     def on_animation_play(self, button):
