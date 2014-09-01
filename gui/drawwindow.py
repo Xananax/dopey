@@ -877,6 +877,22 @@ class DrawWindow (Gtk.Window):
             ani.next_layer()
             self.app.doc.layerblink_state.activate()
 
+    def insert_ani_layer_cb(self, action):
+        ani = self.app.doc.ani.model
+        ani.add_layer(ani.timeline.layer_idx)
+
+    def remove_ani_layer_cb(self, action):
+        ani = self.app.doc.ani.model
+        ani.remove_layer(ani.timeline.layer_idx)
+
+    def duplicate_ani_layer_cb(self, action):
+        ani = self.app.doc.ani.model
+        ani.duplicate_layer()
+
+    def merge_ani_layer_cb(self, action):
+        ani = self.app.doc.ani.model
+        ani.merge_layer_down()
+
     def previous_frame_cb(self, action):
         ani = self.app.doc.ani.model
         ani.previous_frame()
@@ -922,11 +938,8 @@ class DrawWindow (Gtk.Window):
     def toggle_key_cb(self, action):
         self.app.doc.ani.model.toggle_key()
 
-    def insert_frame_cb(self, action):
-        self.app.doc.ani.model.insert_frames()
-
     def remove_frame_cb(self, action):
-        self.app.doc.ani.model.remove_frames()
+        self.app.doc.ani.model.remove_frame()
 
     def cut_cel_cb(self, action):
         ani = self.app.doc.ani.model

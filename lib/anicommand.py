@@ -330,8 +330,8 @@ class RemoveLayer(Command):
     def redo(self):
         layers = self.doc.layer_stack
         self.prev_path = layers.get_current_path()
-        layers.deeppop(self.removed_layer.stack)
         self.removed_layer = self.timeline.remove_layer(self.idx)
+        layers.deeppop(self.removed_layer.stack)
 
         path = layers.get_current_path()
         path_above = layers.deepget(path[:-1])

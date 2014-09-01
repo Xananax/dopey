@@ -967,9 +967,37 @@ Perhaps an increasing amount.
         <accelerator key="Right"/>
       </child>
       <child>
+        <object class="GtkAction" id="InsertAniLayer">
+          <property name="label" translatable="yes"
+            context="Menu|Animation|">Insert Layer</property>
+            <signal name="activate" handler="insert_ani_layer_cb"/>
+        </object>
+      </child>
+      <child>
+        <object class="GtkAction" id="RemoveAniLayer">
+          <property name="label" translatable="yes"
+            context="Menu|Animation|">Remove Layer</property>
+            <signal name="activate" handler="remove_ani_layer_cb"/>
+        </object>
+      </child>
+      <child>
+        <object class="GtkAction" id="DuplicateAniLayer">
+          <property name="label" translatable="yes"
+            context="Menu|Animation|">Duplicate Layer</property>
+            <signal name="activate" handler="duplicate_ani_layer_cb"/>
+        </object>
+      </child>
+      <child>
+        <object class="GtkAction" id="MergeAniLayer">
+          <property name="label" translatable="yes"
+            context="Menu|Animation|">Merge Layer</property>
+            <signal name="activate" handler="merge_ani_layer_cb"/>
+        </object>
+      </child>
+      <child>
         <object class="GtkAction" id="AddCel">
           <property name="label" translatable="yes"
-            context="Menu|Animation|">Add cel to this frame</property>
+            context="Menu|Animation|">Add frame (cel)</property>
             <signal name="activate" handler="add_cel_cb"/>
         </object>
       </child>
@@ -1043,16 +1071,9 @@ Perhaps an increasing amount.
         </object>
       </child>
       <child>
-        <object class="GtkAction" id="InsertFrame">
-          <property name="label" translatable="yes"
-            context="Menu|Animation|">Insert frame</property>
-            <signal name="activate" handler="insert_frame_cb"/>
-        </object>
-      </child>
-      <child>
         <object class="GtkAction" id="RemoveFrame">
           <property name="label" translatable="yes"
-            context="Menu|Animation|">Remove frame</property>
+            context="Menu|Animation|">Remove frame (cel)</property>
             <signal name="activate" handler="remove_frame_cb"/>
         </object>
       </child>
